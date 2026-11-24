@@ -340,16 +340,26 @@ up to 85 s on a loaded host, and `dirty` runs two).
 
 `--scenario both` (bh4) runs every `TestControlledReceivedActual*` test once,
 as one stage per scenario (`provider`, `passed-grant`, `advance`,
-`corruption`, `dirty`, `interleaving`, `allocate`, `gap`, `mixed`,
-`effected`, `readdir`, the six `terminal-*` groups, `cleanup`,
+`corruption`, `dirty`, `interleaving`, `allocate`, `gap`, `abandon`,
+`mixed`, `effected`, `readdir`, the six `terminal-*` groups, `cleanup`,
 `exit-cleanup`), each with its own Go timeout and the runner's 1200 s stage
 bound. It used to be one Go run of `^TestControlledReceivedActual` under
 180 s, which timed out after three or four tests because each test builds
 its own consumer. A failed stage no longer stops the others; the runner
 fails at the end and names the failed scenarios. Stage outputs are
 `actual-c6-host-SCENARIO.stdout`. Expect roughly 30-40 minutes on a loaded
-two-CPU race build. `effected` still fails on main (since oc4; see the bh4
-section in `../../README.md`).
+two-CPU race build.
+
+`--scenario effected` (`TestControlledReceivedActualEffectedGapRefusal`)
+loses the reply of an admitted CREATE, which blocks the session (oc4+pc4).
+A blocked session polls only exempt operations, so the test no longer
+QUERYs the claim from the guest: it reads the CREATE's TERMINAL OK result
+from the host's claim ledger (`Provider.Resolve`, read-only). The exempt
+GAP_RESOLVE then reaches the host, which refuses the effected claim and
+publishes no response; since z54 that cell reads as a definitive EIO, so
+`RESOLVE_GAP` fails with -EPROTO (it used to wait out -ETIMEDOUT) and the
+guest keeps the original request and candidate (fl4; see
+`../../README.md`).
 
 `--scenario exit-cleanup` (`TestControlledReceivedActualExitThenCleanup`)
 runs the production PROCESS_EXIT worker first and then the same process's

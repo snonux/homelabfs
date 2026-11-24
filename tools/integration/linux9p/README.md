@@ -2573,6 +2573,7 @@ session, so the test's plain QUERY of the effected claim halts with
 w54 (2026-11-09). Whether a blocked session may QUERY a retained,
 non-exempt claim is a guest-protocol decision. The fix is either a
 guest exemption or a different way for the test to observe the effect.
+fl4 (below) took the second way.
 
 ## Abandon of stranded claims (`hh4`)
 
@@ -2621,3 +2622,37 @@ actual `hfs_session_block` of `view --pressure`.
 The series was regenerated with `export.py --task hh4` (0002:
 `hfs_policy.[ch]`; 0003: `hfs.h`, `hfs_session.c`; 0005: `hfs_controlled.c`).
 No candidate was rebuilt, booted or admitted.
+
+## `effected` observes the CREATE on the host (`fl4`)
+
+Since oc4+pc4 (merge `942614a`) the lost CREATE reply in
+`TestControlledReceivedActualEffectedGapRefusal` blocks the session, and a
+blocked session polls only exempt operations (DRAIN_WRITE, GAP_RESOLVE and
+the gap QUERY, dh4). The guest rule stays. The test changes instead:
+
+- It no longer QUERYs the effected claim from the guest (that halted with
+  `-EHOSTDOWN`, -112). `requireHostCreateEffect` reads the claim from the
+  host's real claim ledger (`Provider.Resolve` with the peer's scope) and
+  requires TERMINAL with an OK result that carries capabilities. The lookup
+  is read-only and sends no command. The host runs a CALL before it writes
+  the reply the guest loses, so the effect is already there; a short
+  bounded poll covers a ledger that is not TERMINAL yet.
+- The exempt GAP_RESOLVE still reaches the host. The host refuses the
+  effected claim (`ResolveOriginalGap`: a prepared claim is `Unavailable`)
+  and publishes no response. Since z54 that cell reads as a definitive
+  EIO, which the harness passes on as ERROR (bh4), so `RESOLVE_GAP` now
+  fails with -EPROTO (-71) at once instead of waiting out -ETIMEDOUT
+  (-110). `requireUnansweredGap` checks that GAP_RESOLVE was sent for
+  exactly that claim, that none of its cells got a response, and that a
+  native read error was answered. The guest keeps ownership as before
+  (floor 0, 2 requests, 2 unknown candidates).
+
+Red first: `--scenario effected` failed with `C6 RUN session0 1 QUERY =
+-112 want0`. The series and the guest patches are unchanged.
+
+Results (owned prepared tree, this host, another kernel build running):
+`--scenario effected` passes (42.6 s). `--scenario both` (20 stages):
+19 pass, including `effected` (50 s); `terminal-kernel80` failed once
+with `REPLAY_CONTROL ... VIEW_ACQUIRE = -110` (an uncertain control
+deadline under load) and passed when rerun alone (88 s). That test does
+not touch the changed code; its flakiness is not investigated here.

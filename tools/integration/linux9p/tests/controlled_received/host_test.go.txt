@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
@@ -1445,12 +1446,21 @@ func TestControlledReceivedActualMixedIssuerFloors(t *testing.T) {
 	c.close()
 }
 
+// TestControlledReceivedActualEffectedGapRefusal loses the reply of an admitted
+// CREATE, checks that the CREATE took effect on the host and that the host
+// then refuses GAP for that effected claim while the guest keeps ownership.
+//
+// Since oc4+pc4 (merge 942614a) the lost reply blocks the session, and a
+// blocked session polls only exempt operations (DRAIN_WRITE, GAP_RESOLVE and
+// the gap QUERY, dh4). The guest's plain QUERY of the claim therefore halts
+// with -EHOSTDOWN at its first AGAIN, so the effect is read from the host's
+// claim ledger instead (fl4). That lookup is read-only: it sends no command
+// and does not change what the guest's GAP_RESOLVE sees.
 func TestControlledReceivedActualEffectedGapRefusal(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)
 	// The lost CALL leaves cells the host never answers; since z54 their
-	// reads are a definitive IO (bh4). This test still fails since oc4
-	// (task fl4).
+	// reads are a definitive IO (bh4).
 	c.passReadErrors = true
 	root := c.action("REQUEST", 0, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0)
 	caps := receivedResult(t, root)
@@ -1458,6 +1468,32 @@ func TestControlledReceivedActualEffectedGapRefusal(t *testing.T) {
 	c.action("FAULT", 0, "CALL 2", 0)
 	args := map[string]any{"parent": caps[0], "name": "6566666563746564", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}
 	c.action("REQUEST", 0, "CREATE "+hex.EncodeToString(mustRuntimeJSON(t, args)), -5)
+	claim := receivedCallClaim(t, c, "CREATE")
+	if claim.Number != 2 {
+		t.Fatal("lost CALL did not retain actual CREATE original")
+	}
+	requireHostCreateEffect(t, r.peers[0], claim)
+	// The host refuses GAP for its protected effected claim (a prepared claim
+	// is Unavailable to ResolveOriginalGap) and publishes no response. The
+	// exempt GAP_RESOLVE reaches the host although the session is blocked.
+	// Since z54 the unanswered cell reads as a definitive EIO (lib9p: Rbridge
+	// ERROR), so the guest fails at once with -EPROTO instead of waiting out
+	// its -ETIMEDOUT control deadline. It retains the original
+	// request/candidate; no reset follows.
+	errorsBefore := c.nativeErrors
+	c.action("RESOLVE_GAP", 0, "", -71)
+	requireUnansweredGap(t, c, claim, errorsBefore)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 2 {
+		t.Fatalf("effected GAP refusal lost ownership: %d/%d/%d", floor, requests, unknown)
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
+}
+
+// receivedCallClaim returns the claim of the last actual CALL whose intent is
+// opcode (a zero claim when there is none).
+func receivedCallClaim(t *testing.T, c *receivedCarrier, opcode string) guestbridge.Claim {
+	t.Helper()
 	var claim guestbridge.Claim
 	for _, command := range c.commands {
 		if command.Op != "CALL" {
@@ -1465,45 +1501,68 @@ func TestControlledReceivedActualEffectedGapRefusal(t *testing.T) {
 		}
 		var call guestbridge.Call
 		require(t, json.Unmarshal(command.Payload, &call))
-		if call.Intent.Opcode == "CREATE" {
+		if call.Intent.Opcode == opcode {
 			claim = call.Claim
 		}
 	}
-	if claim.Number != 2 {
-		t.Fatal("lost CALL did not retain actual CREATE original")
-	}
-	terminal := false
+	return claim
+}
+
+// requireHostCreateEffect reads claim from the peer's real host claim ledger
+// (the provider the guest's commands reach) and requires a TERMINAL OK CREATE
+// result with capabilities. The host runs a CALL before it writes the reply
+// the guest lost, so the effect is normally already there; the short bounded
+// poll only tolerates a ledger that has not reached TERMINAL yet. This
+// replaces the guest QUERY a blocked session may no longer send (fl4).
+func requireHostCreateEffect(t *testing.T, peer *sourceRig, claim guestbridge.Claim) {
+	t.Helper()
+	var state guestbridge.ClaimState
 	for range 100 {
-		raw := c.run(0, true, "QUERY", map[string]any{"claim": claim})
-		var reply struct {
-			Payload struct {
-				Status string
-				Result struct {
-					Code         string
-					Capabilities []guestbridge.Capability
-				}
-			}
-		}
-		require(t, json.Unmarshal(raw, &reply))
-		if reply.Payload.Status == "TERMINAL" {
-			if reply.Payload.Result.Code != "OK" || len(reply.Payload.Result.Capabilities) == 0 {
-				t.Fatal("actual CREATE effect absent")
-			}
-			terminal = true
+		var err error
+		state, err = peer.provider.Resolve(t.Context(), peer.scope, claim)
+		require(t, err)
+		if state.Status == "TERMINAL" {
 			break
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if !terminal {
-		t.Fatal("actual admitted CREATE did not finish")
+	if state.Status != "TERMINAL" {
+		t.Fatalf("actual admitted CREATE did not finish: %s", state.Status)
 	}
-	// The host refuses GAP for its protected effected claim. The actual guest
-	// control deadline retains the original request/candidate; no reset follows.
-	c.action("RESOLVE_GAP", 0, "", -110)
-	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 2 {
-		t.Fatalf("effected GAP refusal lost ownership: %d/%d/%d", floor, requests, unknown)
+	var result struct {
+		Code         string
+		Capabilities []guestbridge.Capability
 	}
-	c.action("RETAIN_VERIFY", 0, "", 0)
-	c.close()
+	require(t, json.Unmarshal(state.Result, &result))
+	if result.Code != "OK" || len(result.Capabilities) == 0 {
+		t.Fatalf("actual CREATE effect absent: %s", state.Result)
+	}
+}
+
+// requireUnansweredGap requires that the guest sent GAP_RESOLVE for exactly
+// claim, that the host answered none of those cells, and that the failure
+// came from a definitive native read error (the carrier answered ERROR)
+// after errorsBefore, not from a guest-side refusal before any send.
+func requireUnansweredGap(t *testing.T, c *receivedCarrier, claim guestbridge.Claim, errorsBefore int) {
+	t.Helper()
+	sent := 0
+	for cell, command := range c.commands {
+		if command.Op != "GAP_RESOLVE" {
+			continue
+		}
+		var call guestbridge.Call
+		require(t, json.Unmarshal(command.Payload, &call))
+		if call.Claim != claim {
+			t.Fatalf("GAP_RESOLVE for another claim: %+v", call.Claim)
+		}
+		if c.responses[cell] != nil {
+			t.Fatalf("host answered GAP_RESOLVE of an effected claim: %s", c.responses[cell])
+		}
+		sent++
+	}
+	if sent == 0 || c.nativeErrors == errorsBefore {
+		t.Fatalf("effected GAP not refused by the host: %d sent, %d native errors", sent, c.nativeErrors-errorsBefore)
+	}
 }
 
 func TestControlledReceivedActualClosingReaddir(t *testing.T) {
