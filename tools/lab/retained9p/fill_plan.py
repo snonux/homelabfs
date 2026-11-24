@@ -57,6 +57,8 @@ def _sibling(name, filename):
 # checked by exactly the code that later consumes them.
 bootstrap = _sibling("retained9p_bootstrap", "bootstrap.py")
 controller = bootstrap.controller
+# The mountinfo rule the remote mount step applied (bl4, fd_attr_shown).
+remote = _sibling("retained9p_bootstrap_remote", "bootstrap_remote.py")
 digest, parse, read = controller.digest, controller.parse, controller.read
 
 # Placeholders exactly as the zq3 fill wrote them into the templates.
@@ -221,7 +223,15 @@ def run_evidence(run_dir, plan_sha256):
         mounts.append({"path": mount["mountpoint"], "tag": tag, "session": session,
                        "mount_id": mount_id(details["mount-{}".format(index)], mount)})
     require(mounts[0]["mount_id"] != mounts[1]["mount_id"], "m0 and m1 report the same mount ID")
-    return dict(facts, run_id=plan["run_id"], mounts=mounts)
+    return dict(facts, run_id=plan["run_id"], mounts=mounts, fd_attr=mounted_fd_attr(details))
+
+
+def mounted_fd_attr(details):
+    """bl4: whether both mounts show hfs_fdattr, the same for both."""
+    shown = [remote.fd_attr_shown(details["mount-{}".format(index)]["mountinfo"]) for index in (0, 1)]
+    require(shown[0] is shown[1] and shown[0] is not None,
+            "m0 and m1 must both show hfs_fdattr once after cache=mmap, or neither: " + repr(shown))
+    return shown[0]
 
 
 # --------------------------------------------------------------------------
@@ -237,6 +247,11 @@ def fill_batch(template, facts):
     """
     plan = copy.deepcopy(template)
     require(plan.get("run_id") == facts["run_id"], "template run ID differs from the bootstrap run")
+    # bl4: the batch expects hfs_fdattr (template `fd_attr`) exactly when the
+    # bootstrap mounted with it, or guest.py would refuse every case later.
+    require(("fd_attr" in plan) is facts["fd_attr"],
+            "template fd_attr {} but the bootstrap mounts {} hfs_fdattr".format(
+                "set" if "fd_attr" in plan else "absent", "show" if facts["fd_attr"] else "do not show"))
     put(plan, "installed_manifest_sha256", MANIFEST, facts["manifest_sha256"], "plan")
     requests = plan.get("requests")
     require(isinstance(requests, list) and requests, "template holds no requests")
@@ -307,7 +322,7 @@ def batch(args):
     return {"output": args.output, "sha256": sha256, **controller.deferral_record(plan),
             "boot_id": facts["boot_id"],
             "provider_nonce": facts["provider_nonce"], "manifest_sha256": facts["manifest_sha256"],
-            "mount_ids": [mount["mount_id"] for mount in facts["mounts"]]}
+            "mount_ids": [mount["mount_id"] for mount in facts["mounts"]], "fd_attr": facts["fd_attr"]}
 
 
 def bootstrap_fill(args):

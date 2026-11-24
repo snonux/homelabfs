@@ -70,6 +70,14 @@ LISTING_LIMIT = 1024  # Bounded root listing per domain in the re-read step.
 # the still-unblocked m1 after host loss, or its refusals would be local and
 # prove nothing about the host. T8 (unmount of m1) runs after T11.
 STEP_DOMAIN = {"lost-reply-call": 0, "lost-reply-reread": 0, "quiesce": 0, "after-loss": 1}
+# bl4 (s64): every request kind may carry `"fd_attr": true`, never another
+# value. controller.py adds it only for a candidate whose guest kernel, lib9p
+# exporter and daemon carry s64 (controller.FD_ATTR), and bootstrap.py then
+# mounted with `hfs_fdattr`. Absent, the request keeps its exact pre-bl4 shape
+# and both mounts must NOT show the option; present, both must show it.
+FD_ATTR = "fd_attr"
+# Options every admitted controlled mount shows (mount or super options).
+MOUNT_OPTIONS = frozenset({"rw", "cache=mmap", "version=9P2000.L.hfs1.4", "msize=65536"})
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 # Deadlines (be4, zq3-r14 R14-1). One hfs syscall can wait about 90-120 s
 # (docs/Test-automation.md: view wait, lease exchange, allocation wait and
@@ -113,6 +121,8 @@ PAYLOAD_FILES = {
     "metadata": ["renamed", "linked"],
 }
 PAYLOAD_DIRS = {"credentials": ["setgid", "sticky"]}
+# bl4: extra entries a case leaves on an fd_attr request (metadata_peer_rename).
+FD_ATTR_PAYLOAD_FILES = {"metadata": ["peer-renamed"]}
 
 
 class Refused(RuntimeError):
@@ -247,19 +257,39 @@ def canonical(value):
 
 
 def request_kind(request):
-    """Closed request shapes: a syscall case, its payload release or a lifecycle step."""
-    if not isinstance(request, dict):
+    """Closed request shapes: a syscall case, its payload release or a lifecycle step.
+
+    Each may also carry `"fd_attr": true` (bl4, see FD_ATTR); any other
+    fd_attr value refuses.
+    """
+    if not isinstance(request, dict) or request.get(FD_ATTR, True) is not True:
         raise Refused("request shape/version")
-    if request.get("version") == VERSION and set(request) == REQUEST_FIELDS:
+    keys = set(request) - {FD_ATTR}
+    if request.get("version") == VERSION and keys == REQUEST_FIELDS:
         return "case"
-    if request.get("version") == RELEASE_VERSION and set(request) == RELEASE_FIELDS:
+    if request.get("version") == RELEASE_VERSION and keys == RELEASE_FIELDS:
         for name in ["token", "inventory_sha256", "correlation_sha256"]:
             if not isinstance(request[name], str) or not HEX64.fullmatch(request[name]):
                 raise Refused("release token/digest shape")
         return "release"
-    if request.get("version") == STEP_VERSION and set(request) == STEP_FIELDS:
+    if request.get("version") == STEP_VERSION and keys == STEP_FIELDS:
         return "step"
     raise Refused("request shape/version")
+
+
+def fd_attr(request):
+    """Whether a shape-checked request expects hfs_fdattr mounts (bl4)."""
+    return request.get(FD_ATTR) is True
+
+
+def payload_files(request):
+    """The exact files a case leaves: PAYLOAD_FILES plus, on an fd_attr
+    request, FD_ATTR_PAYLOAD_FILES (bl4). A release carries the case's
+    fd_attr too (controller.py copies the case request), so it unlinks the
+    same list the case retained."""
+    case = request["case"]
+    extra = FD_ATTR_PAYLOAD_FILES.get(case, []) if fd_attr(request) else []
+    return PAYLOAD_FILES[case] + extra
 
 
 def is_release(request):
@@ -281,8 +311,9 @@ def find_mount(lines, path):
         left, right = line.split(" - ", 1)
         fields, fs = left.split(), right.split()
         if decode_mount(fields[4]) == path:
+            # Super options stay a list: their order is checked (fd_attr_shown).
             matches.append((int(fields[0]), fs[0], decode_mount(fs[1]),
-                            set(fields[5].split(",")), set(fs[2].split(","))))
+                            set(fields[5].split(",")), fs[2].split(",")))
     if len(matches) > 1:
         raise Refused("exact mountpoint not present once")
     return matches[0] if matches else None
@@ -359,7 +390,7 @@ def open_domains(request, fds):
         path = row["path"]
         if os.path.realpath(path) != path:
             raise Refused("private canonical run mount path required")
-        mount_id = check_tuple(row, match_mount(lines, path))
+        mount_id = check_tuple(row, match_mount(lines, path), fd_attr(request))
         admission_step("open-root", domain=index, path=path)
         # Registered in fds under the SIGALRM mask: a deadline that expired
         # during the open is raised only once main's roots list owns the fd.
@@ -387,14 +418,34 @@ def check_row(request, row, index):
         raise Refused("private canonical run mount path required")
 
 
-def check_tuple(row, found):
-    """The admitted controlled 9p tuple: mount ID, type, tag and exact options."""
+def check_tuple(row, found, expect_fd_attr):
+    """The admitted controlled 9p tuple: mount ID, type, tag and exact options.
+
+    bl4: hfs_fdattr must be shown exactly when the request expects it, so a
+    plan for an s64 candidate never runs on a mount without the option, and
+    a pre-s64 plan never runs on a mount with it.
+    """
     mount_id, kind, tag, options, super_options = found
     if (mount_id != row["mount_id"] or kind != "9p" or tag != row["tag"] or
-            not {"rw", "cache=mmap", "version=9P2000.L.hfs1.4",
-                 "msize=65536"} <= options | super_options):
+            not MOUNT_OPTIONS <= options | set(super_options) or
+            fd_attr_shown(super_options) is not expect_fd_attr):
         raise Refused("exact controlled mount tuple differs")
     return mount_id
+
+
+def fd_attr_shown(super_options):
+    """True for one hfs_fdattr directly after cache=mmap, False for none.
+
+    hfs_show_options (patch 0003, s64) prints ",cache=mmap,hfs_fdattr" while
+    the option is in effect; a minor-0/1 session that turned it off prints
+    no hfs_fdattr. A repeated or misplaced one is not that output: None,
+    which matches no expectation.
+    """
+    count = super_options.count("hfs_fdattr")
+    if not count:
+        return False
+    index = super_options.index("hfs_fdattr")
+    return True if count == 1 and index and super_options[index - 1] == "cache=mmap" else None
 
 
 def admit_step(request):
@@ -420,7 +471,7 @@ def admit_step(request):
         if found is None and index == STEP_DOMAIN[request["step"]]:
             raise Refused("exact mountpoint not present once")
         mounts.append({"index": index, "path": row["path"], "present": found is not None,
-                       "mount_id": check_tuple(row, found) if found else None})
+                       "mount_id": check_tuple(row, found, fd_attr(request)) if found else None})
     emit("admitted-step", step=request["step"], boot_id=request["boot_id"],
          provider_nonce=request["provider_nonce"], mounts=mounts,
          publication=None, acceptance=False)
@@ -618,7 +669,7 @@ class Retention:
         """Exact payload identity: names, types, inode, owner, mode, size, links."""
         case = self.request["case"]
         entries = []
-        for name in PAYLOAD_DIRS.get(case, []) + PAYLOAD_FILES[case]:
+        for name in PAYLOAD_DIRS.get(case, []) + payload_files(self.request):
             seen = os.stat(name, dir_fd=fd, follow_symlinks=False)
             regular = stat.S_ISREG(seen.st_mode)
             checked(regular or stat.S_ISDIR(seen.st_mode), "payload entry type")
@@ -646,7 +697,7 @@ class Retention:
     def retain(self):
         """Keep the payload for host correlation; persist only the token hash."""
         inventory = self.current_inventory()
-        expected = sorted({name.split("/", 1)[0] for name in PAYLOAD_FILES[self.request["case"]]})
+        expected = sorted({name.split("/", 1)[0] for name in payload_files(self.request)})
         checked(inventory["listing"] == expected, "unexpected payload entries")
         token = secrets.token_hex(32)
         inventory_sha256 = hashlib.sha256(canonical(inventory)).hexdigest()
@@ -702,7 +753,7 @@ class Retention:
                       src_dir_fd=run, dst_dir_fd=run)
             os.fsync(run)
         with p.open_leaf() as fd:
-            for name in PAYLOAD_FILES[case]:
+            for name in payload_files(self.request):
                 p.call("unlink-released-payload", lambda n=name: os.unlink(n, dir_fd=fd), name=name)
             for name in PAYLOAD_DIRS.get(case, []):
                 p.call("rmdir-released-payload", lambda n=name: os.rmdir(n, dir_fd=fd), name=name)
@@ -922,6 +973,40 @@ def metadata(p):
             checked(p.write(unlinked, b"retained") == 8, "open-unlinked write")
             p.call("fsync-open-unlinked", lambda: os.fsync(unlinked))
             checked(pread(p, unlinked, 8, 0, "unlinked") == b"retained", "open-unlinked read")
+        if fd_attr(p.request):
+            metadata_peer_rename(p, directory, leaf)
+
+
+def metadata_peer_rename(p, directory, leaf):
+    """bl4: an fd kept open on m0 while m1, the other session, renames its file.
+
+    Then stat(old name) through m0 must fail ENOENT, never answer with the
+    renamed file's attributes, and fstat(fd) must still describe that file.
+    The fstat is the s64 Stale fallback: the path GETATTR is Stale after the
+    peer rename and the guest retries through the fd's own description. The
+    stat guards that fallback's precondition (docs/design/s64-fd-attr.md,
+    "Invariant that makes step 3 safe"): hfs_d_revalidate keeps no dentry
+    across walks, so the name walk LOOKUPs afresh; a kept dentry would let
+    the fallback act on the renamed file under its old name. Only on fd_attr
+    requests: without hfs_fdattr there is no fallback, and fstat after a peer
+    rename is the known r64 ESTALE gap. "peer-renamed" stays as payload.
+    """
+    receipt, old, new = b"peer-rename-receipt", leaf + "/peer-original", leaf + "/peer-renamed"
+    with p.owned("create-exclusive", "peer-original", EXCLUSIVE, 0o600, dir_fd=directory) as fd:
+        checked(p.write(fd, receipt) == len(receipt), "peer-rename initial write")
+        before = p.call("fstat-before-peer-rename", lambda: os.fstat(fd))
+        p.call("rename-cross-domain", lambda: os.rename(old, new, src_dir_fd=p.roots[1], dst_dir_fd=p.roots[1]),
+               source=old, target=new)
+        code, _ = attempt(p, "stat-old-name", lambda: os.stat("peer-original", dir_fd=directory,
+                                                                follow_symlinks=False), name="peer-original")
+        checked(code == errno.ENOENT, "stat(old name) after a peer rename must fail ENOENT, "
+                "never answer with the renamed file's attributes (errno {})".format(code))
+        after = p.call("fstat-after-peer-rename", lambda: os.fstat(fd))
+        checked((after.st_ino, after.st_size) == (before.st_ino, len(receipt)),
+                "fstat(fd) after a peer rename must describe the same file")
+        renamed = p.call("stat-new-name", lambda: os.stat("peer-renamed", dir_fd=directory,
+                                                            follow_symlinks=False), name="peer-renamed")
+        checked(renamed.st_ino == before.st_ino, "the new name must be the renamed file")
 
 
 def mapped_pressure(p):

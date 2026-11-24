@@ -700,6 +700,13 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
      `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536
      hfs0 /var/tmp/hfs-zq3-zq3-r1/m0` and the same for `hfs1` on `m1`; both
      HELLOs; runtime prints READY with the control binding [`ready`].
+     With an s64 candidate (bl4: `controller.py` `FD_ATTR`, empty until the
+     next candidate built from main is admitted) the bootstrap plan names it
+     in `fd_attr_candidate_sha256` and both mounts add `hfs_fdattr`
+     (`trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`);
+     each mountinfo row must then show `,cache=mmap,hfs_fdattr`, and the batch
+     plan and every request carry `"fd_attr": true`. A plan without these
+     fields mounts and checks exactly as before; a pre-s64 candidate refuses.
   6. After READY, under its own bound rather than the 120 s: the usability
      gate (k64) [`usable`]. zq3-r6 and r7 reached READY with every step `ok`,
      but the guest had already blocked both sessions, so every operation
@@ -793,7 +800,7 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 |---|---|---|
 | T1 | UID/GID incl. full 1024-entry groups, setgid/umask create, sticky, special bits, cross-domain metadata | `check-retained9p.sh probe` (case `credentials`), then host correlation (`correlate.py case` from an OBSERVE taken right before the dispatch and one while the payload is retained), then `release`, then `next` |
 | T2 | write acknowledgement and sync propagation (O_SYNC/O_DSYNC/fdatasync/fsync, directory fsync, mmap MS_SYNC) | case `sync` + correlation of journal `Through/Applied` via OBSERVE + `release`, `next` |
-| T3 | metadata: rename, hardlink, truncate, open-unlinked, cross-domain freshness | case `metadata` + correlation + `release`, `next` |
+| T3 | metadata: rename, hardlink, truncate, open-unlinked, cross-domain freshness; with `fd_attr` (bl4, s64) also the peer rename: an fd kept open on m0 while m1 renames its file, then `stat(old name)` through m0 must be ENOENT (never the old file's attributes) and `fstat(fd)` the same file (`peer-renamed` stays as payload) | case `metadata` + correlation + `release`, `next` |
 | T4 | foreign user namespace refusal (boundary only) | case `namespace` + correlation + `release`, then `next` only if T5 is planned (with T5 deferred, T4's release completes the batch and `next` refuses: no remaining case) |
 | T5 | `cache=mmap`: full 4 MiB mapped canary, cross-domain hash | **deferred (q64)**: the canary's view lifetimes exceed the 4 GiB budget and running it would block both sessions for T6-T11, so the batch plan declares `mapped-pressure` in `deferred` (z64) and runs T1-T4 only; recorded as deferred, never as a pass. Once q64 is fixed: case `mapped-pressure` + correlation + `release` |
 | T6 | locks within one guest mount | `tools/lab/guest-lock-probe.py` on `m0` (POSIX/flock conflicts, blocking waits, GETLK, close/exit cleanup) |

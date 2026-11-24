@@ -189,7 +189,21 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
 # still need the f3 observer check.
 # Admission here is a dispatch precondition, never deployment eligibility.
 ADMITTED = {"1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"}
-CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
+# Admitted candidates that may mount with `hfs_fdattr` (s64, bl4): GETATTR and
+# SETATTR through the open file description, so fstat/fchmod/fchown/futimens
+# work after a rename or unlink. All three parts must carry s64: the guest
+# kernel (patch 0003 parses the option and sends the described forms), the
+# lib9p exporter (`_args` routes the described shapes) and the daemon
+# (host 157a132). With a pre-s64 exporter or daemon a described call on the
+# controlled (minor 4) session is a failed ALLOCATE, which costs the session
+# (docs/design/s64-fd-attr.md, "Version negotiation"). A pre-s64 guest kernel
+# would not even print the option. So the option is never derived from the
+# tooling's own version: a plan asks for it (`fd_attr`, below) and only a
+# digest listed here may grant it. Empty: the r21 candidate (baseline
+# 91b9ee1) and every superseded one predate s64 (guest and lib9p 1258f5d).
+# The next candidate built from main goes here together with ADMITTED.
+FD_ATTR = frozenset()
+CASES =["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
 # than the 4 GiB host budget funds until q64 recycles view tickets, so it is
@@ -201,9 +215,16 @@ CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 DEFERRABLE = frozenset({"mapped-pressure"})
 DEFERRAL_REASON_LIMIT = 512  # Characters; a reason is a sentence, not evidence.
 # Required plan keys; `deferred` is optional so a plan that defers nothing keeps
-# the exact pre-z64 shape and digest.
+# the exact pre-z64 shape and digest. `fd_attr` (bl4) is optional for the same
+# reason: a plan without it, every plan filled so far included, keeps its
+# bytes and mounts without `hfs_fdattr`. Present, it must be `true`, the
+# candidate must be in FD_ATTR and every request carries `"fd_attr": true`, so
+# guest.py expects the option in mountinfo (and refuses it otherwise).
 PLAN_FIELDS = ["version", "run_id", "ssh", "host", "guest", "probe_sha256",
                "candidate_manifest_sha256", "installed_manifest_sha256", "requests", "seconds"]
+OPTIONAL_PLAN_FIELDS = ["deferred", "fd_attr"]
+REQUEST_FIELDS = ["version", "run_id", "boot_id", "provider_nonce", "manifest_sha256",
+                  "mounts", "case", "seconds"]
 RELEASE_VERSION = "homelabfs-retained9p-release/1"  # Same as guest.py.
 CORRELATION_VERSION = "homelabfs-retained9p-host-correlation/1"
 STEP_VERSION = "homelabfs-retained9p-lifecycle-step/1"  # Same as guest.py.
@@ -398,6 +419,19 @@ def require_candidate(manifest_hash):
     # observations and root's completed setup remain separate gates.
 
 
+def require_fd_attr(manifest_hash):
+    """An admitted candidate whose guest, exporter and daemon all carry s64.
+
+    Shared by the batch plan's `fd_attr` and the bootstrap plan's
+    `fd_attr_candidate_sha256` (bootstrap.py), so both refuse an older
+    candidate the same way before anything is mounted or dispatched.
+    """
+    require_candidate(manifest_hash)
+    if manifest_hash not in FD_ATTR:
+        raise Refused("hfs_fdattr needs a candidate with the s64 guest kernel, lib9p exporter and "
+                      "daemon; this candidate predates s64 (omit fd_attr to mount without it)")
+
+
 def pinned_sources(plan):
     """Pinned original input paths: name -> (path, sha256, bound)."""
     sources = {"ssh": (plan["ssh"]["path"], plan["ssh"]["sha256"], 16 << 20),
@@ -453,9 +487,13 @@ def check_pin(raw, target):
 
 
 def validate_shape(plan):
-    optional = ["deferred"] if isinstance(plan, dict) and "deferred" in plan else []
+    optional = [name for name in OPTIONAL_PLAN_FIELDS if isinstance(plan, dict) and name in plan]
     closed(plan, PLAN_FIELDS + optional)
     require_candidate(plan["candidate_manifest_sha256"])
+    if "fd_attr" in plan:
+        if plan["fd_attr"] is not True:
+            raise Refused("fd_attr must be true; omit it to mount without hfs_fdattr")
+        require_fd_attr(plan["candidate_manifest_sha256"])
     if plan["version"] != VERSION or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", plan["run_id"]):
         raise Refused("batch version/run ID")
     # plan["seconds"] caps every single SSH dispatch (see dispatch_seconds).
@@ -553,8 +591,12 @@ def validate_request(plan, request, original):
     """One case request of the batch; returns its boot/provider/mount identity."""
     if len(canonical(request)) > REQUEST_LIMIT:
         raise Refused("guest request exceeds 16KiB wire bound")
-    closed(request, ["version", "run_id", "boot_id", "provider_nonce", "manifest_sha256",
-                     "mounts", "case", "seconds"])
+    # bl4: a request carries `"fd_attr": true` exactly when the plan does; the
+    # release and step requests are built from these, so they carry it too.
+    fd_attr = "fd_attr" in plan
+    closed(request, REQUEST_FIELDS + (["fd_attr"] if fd_attr else []))
+    if fd_attr and request["fd_attr"] is not True:
+        raise Refused("request fd_attr must be true, as the plan's")
     if (request.get("run_id") != plan["run_id"] or
             request.get("version") != "homelabfs-retained9p-syscalls/1" or
             request.get("manifest_sha256") != plan["installed_manifest_sha256"] or
@@ -1082,8 +1124,9 @@ def main():
     args = arguments()
     if args.action == "check":
         raw, plan, _ = plan_snapshot(args.plan)
+        # fd_attr (bl4): whether the batch expects hfs_fdattr mounts.
         print(json.dumps({"plan_sha256": digest(raw), **deferral_record(plan),
-                          "execution_authorized": False, "deployment_eligible": False,
+                          "fd_attr": plan.get("fd_attr", False), "execution_authorized": False, "deployment_eligible": False,
                           "acceptance": False}))
         return 0
     if args.action == "status":
