@@ -267,11 +267,18 @@ native delivery while the requests enter. The single-threaded consumer issues
 the other 79 replays nested in the first request's scheduling yield, so they
 all ran inside that request's 30 s deadline (18.8 s at load 4, over 30 s with
 `-110` next to a kernel build). A kernel would run them on separate threads,
-so the test brackets the fill with `CLOCK_HOLD`/`CLOCK_RELEASE`, a declared
-substitution that freezes the consumer's jiffies for the fill only and logs
-its real wall time (k84). The evidence recorded by 614/814 predates q64
-(VIEW_QUERY control fillers); `evidence/k84` re-records it for the current
-harness. Normal freeing returns transient carrier/Received charges to
+so the test brackets the fill with `CLOCK_SPLIT_BEGIN`/`CLOCK_SPLIT_END`, a
+declared substitution (ml4, `compat.h`) that charges each nested command's
+real service time only to itself: once it returns, the yielding request's
+jiffies resumes where it stood. Every bounded wait stays live, so a stalled
+nested request fails with its own `-110` within its 30 s deadline. k84's
+earlier `CLOCK_HOLD` froze jiffies for the whole fill, which also froze those
+deadlines and turned such a stall into a 600 s go test timeout. Trade-off: a
+stamp a nested request leaves in shared state can lie up to its service time
+in the yielding request's future, which only delays a rate-limited kick. The
+test logs the fill's real wall time. The evidence recorded by 614/814 predates
+q64 (VIEW_QUERY control fillers); `evidence/k84` re-recorded it with
+`CLOCK_HOLD`, `evidence/ml4` with the split. Normal freeing returns transient carrier/Received charges to
 baseline. Actual terminal capture enumerates all80, clears the transport and
 completion parents, and retains the tombstone through a forced post-proof
 teardown failure and normal retry. Its dedicated signed stress enrollment uses

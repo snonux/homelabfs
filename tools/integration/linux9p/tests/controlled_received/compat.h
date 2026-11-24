@@ -69,7 +69,9 @@ struct super_block { void *s_fs_info; dev_t s_dev; struct user_namespace *s_user
 struct inode { struct address_space *i_mapping; struct super_block *i_sb; int refs; unsigned short i_mode; };
 struct file { struct inode *inode; void *private_data; };
 struct vm_area_struct { struct file *vm_file; };
-struct address_space { bool exiting; const struct address_space_operations *a_ops; };
+/* nrpages: wj4, hfs_view_unmark_idle_locked keeps a mark while it is not 0
+ * (always 0 here: the fixture has no page cache). */
+struct address_space { bool exiting; const struct address_space_operations *a_ops; unsigned long nrpages; };
 struct page { bool locked,compound,anon,marker,uptodate,mapped,writeback,pinned,dirty; void *private; int refs;u8 data[4096]; };
 struct folio { struct page page; struct address_space *mapping; };
 struct device { unsigned references; bool registered; const char *name; };
@@ -126,17 +128,40 @@ void primitive_module_put(void *);
 #define time_after_eq(a,b) ((long)((a)-(b))>=0)
 /* p84: the bounded background pressure hold in hfs_mmap_pressure. */
 #define time_before(a,b) ((long)((a)-(b))<0)
-/* k84: nonzero while consumer.c's CLOCK_HOLD freezes jiffies at that value.
- * The single-threaded consumer services nested requests inside one request's
- * scheduling yield; a kernel would run them on other threads, so their
- * serialized service time must not be charged to the outer 30 s deadline.
- * Only terminal-kernel80's 80-request fill uses it.
+/* ml4: per-request charging of nested service time. The single-threaded
+ * consumer runs host commands nested in a request's scheduling yield
+ * (consumer.c primitive_sleep); a kernel would run them on other threads, so
+ * their serialized service time must not count against the yielding
+ * request's deadlines (terminal-kernel80's 80-request fill nests 79 deep and
+ * exceeded the first request's 30 s next to a kernel build, k84).
+ *
+ * jiffies is CLOCK_MONOTONIC minus primitive_nested_milliseconds. While
+ * consumer.c's CLOCK_SPLIT_BEGIN..CLOCK_SPLIT_END is active, the yield loop
+ * adds each nested command's real service time to it once that command
+ * returns: the yielding request's clock resumes where it stood, while the
+ * nested request was charged its own time (and nothing nested deeper still).
+ * Every bounded wait stays live: each request's own 30 s hfs_transport
+ * deadline, wait_event_timeout below and every other jiffies deadline. A
+ * stalled nested request therefore fails with its own -ETIMEDOUT, where
+ * k84's CLOCK_HOLD (which froze jiffies for the whole fill) hung until the
+ * 600 s go test timeout. The host's time to answer a yield is still charged
+ * to the yielding request, as a kernel's sleep would be.
+ *
+ * Trade-off: after a nested command returns, the yielding request reads up
+ * to that command's service time less than the nested request last read. A
+ * stamp a nested request left in shared state (retire_after,
+ * pressure_after, pressure_held_since) can therefore lie that far in the
+ * yielding request's future. The patch series compares such stamps with the
+ * signed time_before/time_after_eq, so that only delays a rate-limited kick
+ * or extends a pressure hold; nothing wraps. Outside the split (every other
+ * scenario) the offset stays 0 and jiffies is CLOCK_MONOTONIC exactly.
  */
-extern unsigned long primitive_held_milliseconds;
-static inline unsigned long primitive_milliseconds(void) {
- unsigned long held=__atomic_load_n(&primitive_held_milliseconds,__ATOMIC_RELAXED);
- if(held)return held;
+extern unsigned long primitive_nested_milliseconds;
+static inline unsigned long primitive_monotonic_milliseconds(void) {
  struct timespec t;assert(!clock_gettime(CLOCK_MONOTONIC,&t));return t.tv_sec*1000UL+t.tv_nsec/1000000;
+}
+static inline unsigned long primitive_milliseconds(void) {
+ return primitive_monotonic_milliseconds()-__atomic_load_n(&primitive_nested_milliseconds,__ATOMIC_RELAXED);
 }
 #define jiffies primitive_milliseconds()
 void primitive_sleep(unsigned long,unsigned long);
@@ -236,6 +261,12 @@ const struct cred *primitive_get_current_cred(void);
 #define uid_valid(uid) ((uid)!=U32_MAX)
 #define gid_valid(gid) ((gid)!=U32_MAX)
 static inline int atomic_read(const atomic_t *value) { return atomic_load(value); }
+/* ml4: wj4's hfs_inode.view_vmas count (hfs_view.c), with the kernel's
+ * ordering of each operation; wj4 updated only tests/view/compat.h, so this
+ * consumer no longer compiled. */
+static inline void atomic_inc(atomic_t *value) { atomic_fetch_add(value,1); }
+static inline int atomic_read_acquire(const atomic_t *value) { return atomic_load_explicit(value,memory_order_acquire); }
+static inline int atomic_dec_return_release(atomic_t *value) { return atomic_fetch_sub_explicit(value,1,memory_order_release)-1; }
 void p9_client_destroy(struct p9_client *);
 const struct cred *primitive_get_cred(const struct cred *);
 void primitive_put_cred(const struct cred *);

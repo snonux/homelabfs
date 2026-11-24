@@ -1,0 +1,66 @@
+{
+  "scope": "Bounded actual C6 component integration with real host Producer and source.\n\nDeclared OS primitives; no installed kernel, native PTE/TLB, deployment or C7 proof.\n",
+  "short_tmp": "/tmp/hfs04kernel-wh8qxquj",
+  "stages": [
+    {
+      "name": "actual-c6-host",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-overlay",
+        "/home/paul/tmp/claude/ml4/allocate-1/overlay.json",
+        "-p",
+        "1",
+        "-run",
+        "^TestControlledReceivedActualAllocateRetryProfile$",
+        "-count=1",
+        "-timeout=600s",
+        "-v",
+        "./internal/controlledruntime"
+      ],
+      "exit": 0,
+      "seconds": 36.73712238902226,
+      "peak_group_rss": 619913216,
+      "limit_reason": null,
+      "pswpout_before": 12987391,
+      "pswpout_after": 12987391,
+      "pswpout_observed": [
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391,
+        12987391
+      ],
+      "swap_telemetry": {
+        "SwapTotal": 8388604,
+        "SwapFree": 872
+      }
+    }
+  ]
+}

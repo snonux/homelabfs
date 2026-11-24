@@ -1,0 +1,6 @@
+=== RUN   TestControlledReceivedActualTerminalKernel80
+    c6_actual_received_test.go:2040: kernel80 fill: 80 nested control replays in 12.665s wall time (nested service time charged per request)
+    c6_actual_received_test.go:2049: destroy error-116 pending1 candidatebytes0 clientmsize65536 proto4
+--- PASS: TestControlledReceivedActualTerminalKernel80 (39.52s)
+PASS
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	40.538s

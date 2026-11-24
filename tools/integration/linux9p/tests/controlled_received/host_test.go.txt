@@ -2023,17 +2023,21 @@ func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
 		c.action("REPLAY_CONTROL", 0, fmt.Sprintf("%d %s %s", reserved, op, hex.EncodeToString(payload)), 0)
 	}
 	// The single-threaded consumer issues the other 79 replays nested in
-	// the first one's scheduling yields, so all 80 sends and their unwinding
-	// ran inside the first request's 30 s hfs_transport deadline. That took
-	// 18.8 s at load 4 and exceeded 30 s (-110) next to a kernel build
-	// (k84). A kernel would run them on separate threads, so CLOCK_HOLD
-	// freezes the consumer's jiffies for the fill only; the log records the
-	// real wall time it took.
+	// the first one's scheduling yields (each in the previous one's), so
+	// on the wall clock all 80 sends and their unwinding ran inside the
+	// first request's 30 s hfs_transport deadline. That took 18.8 s at
+	// load 4 and exceeded 30 s (-110) next to a kernel build (k84). A
+	// kernel would run them on separate threads, so CLOCK_SPLIT_BEGIN
+	// charges each nested request's service time only to itself (ml4,
+	// compat.h) for the fill. Unlike k84's CLOCK_HOLD, which froze jiffies,
+	// every request's own deadline stays live: a stalled request fails
+	// with its own -110 instead of hanging until the go test timeout. The
+	// log records the fill's real wall time.
 	fillStart := time.Now()
-	c.action("CLOCK_HOLD", 0, "", 0)
+	c.action("CLOCK_SPLIT_BEGIN", 0, "", 0)
 	c.action("REPLAY_CONTROL", 0, "0 VIEW_ACQUIRE "+hex.EncodeToString(acquire), 0)
-	c.action("CLOCK_RELEASE", 0, "", 0)
-	t.Logf("kernel80 fill: %d nested control replays in %s wall time (jiffies held)", issued, time.Since(fillStart).Round(time.Millisecond))
+	c.action("CLOCK_SPLIT_END", 0, "", 0)
+	t.Logf("kernel80 fill: %d nested control replays in %s wall time (nested service time charged per request)", issued, time.Since(fillStart).Round(time.Millisecond))
 	c.yields = nil
 	c.holdNativeResponses = false
 	full := stats()

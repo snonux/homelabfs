@@ -40,28 +40,49 @@
       "receipt": "final-1/receipt.json",
       "sha256": "140f97440b0cd9c14742592f3ac9d51cc18e914afd293f9ae2b27cc7fcbcc571",
       "exit": 0,
+      "error": null,
       "seconds": 113.77,
       "test_seconds": 97.34,
       "fill_wall_seconds": 32.708,
-      "peak_group_rss": 612175872
+      "peak_group_rss": 612175872,
+      "peakdisk": null,
+      "source_changes": []
     },
     "final-2": {
       "receipt": "final-2/receipt.json",
       "sha256": "127733bc23184f924073c7b8d278993e6c4a673d6f17d5d99ccf0bba3b12c5dd",
       "exit": 0,
+      "error": null,
       "seconds": 136.48,
       "test_seconds": 130.87,
       "fill_wall_seconds": 42.406,
-      "peak_group_rss": 612659200
+      "peak_group_rss": 612659200,
+      "peakdisk": null,
+      "source_changes": []
     },
     "final-3": {
       "receipt": "final-3/receipt.json",
       "sha256": "161509e50844580a099aa1e78b1061838eea49149bf6e62ad215cbfa8b55335f",
       "exit": 0,
+      "error": null,
       "seconds": 92.73,
-      "test_seconds": 86.70,
+      "test_seconds": 86.7,
       "fill_wall_seconds": 34.184,
-      "peak_group_rss": 612651008
+      "peak_group_rss": 612651008,
+      "peakdisk": null,
+      "source_changes": []
+    },
+    "allocate-1": {
+      "receipt": "allocate-1/receipt.json",
+      "sha256": "b75bb1423fd6814e00c8853ca0830763ed38f90f04be890735e2069f096adcfb",
+      "argv_scenario": "allocate",
+      "exit": 0,
+      "error": null,
+      "seconds": 48.98,
+      "test_seconds": 45.2,
+      "peak_group_rss": 619843584,
+      "peakdisk": null,
+      "source_changes": []
     }
   },
   "deadline_investigation": {
@@ -72,31 +93,43 @@
       "receipt": "pre-fix-1/receipt.json",
       "sha256": "34af296334be4815fd4ec9b630ed80f7a0e637cdc8eef8d2f7a85b9869f23b74",
       "exit": 0,
+      "error": null,
       "seconds": 99.1,
-      "note": "Unmodified 303dd4b harness, load ~4."
+      "note": "Unmodified 303dd4b harness, load ~4.",
+      "peakdisk": null,
+      "source_changes": []
     },
     "pre_fix_2": {
       "receipt": "pre-fix-2/receipt.json",
       "sha256": "221a686cbb64fbb9ffafe20e85ff497ff03418036afafd669816b03f4c7d9293",
       "exit": 0,
+      "error": null,
       "seconds": 85.82,
       "fill_wall_seconds": 18.821,
-      "note": "303dd4b harness plus the duration log only: 18.8 s of the 30 s deadline used at load ~4."
+      "note": "303dd4b harness plus the duration log only: 18.8 s of the 30 s deadline used at load ~4.",
+      "peakdisk": null,
+      "source_changes": []
     },
     "red_delay_nohold": {
       "receipt": "red-delay-nohold/receipt.json",
       "sha256": "a6ff40181a35ac39d816de0e6caedddff9fab4eeca2439a497950620813db1b6",
       "exit": 1,
+      "error": "go test exit 1: C6 REPLAY_CONTROL session0 0 VIEW_ACQUIRE = -110 want0; session blocked by uncertain control result on VIEW_ACQUIRE (-110)",
       "seconds": 77.16,
-      "note": "Temporary 400 ms sleep per nested replay, no hold: failed with the fl4 signature (VIEW_ACQUIRE -110). Kept as failed-run evidence."
+      "note": "Temporary 400 ms sleep per nested replay, no hold: failed with the fl4 signature (VIEW_ACQUIRE -110). Kept as failed-run evidence.",
+      "peakdisk": null,
+      "source_changes": []
     },
     "green_delay_hold": {
       "receipt": "green-delay-hold/receipt.json",
       "sha256": "d5916d344c91329f6193fa875b06311d7740beafd60d3d8a99f3f68fdc207bc5",
       "exit": 0,
+      "error": null,
       "seconds": 106.34,
       "fill_wall_seconds": 53.005,
-      "note": "Same temporary delay with CLOCK_HOLD: PASS."
+      "note": "Same temporary delay with CLOCK_HOLD: PASS.",
+      "peakdisk": null,
+      "source_changes": []
     },
     "final_runs_note": "Under the load during the final runs (another worker building a kernel, load average up to 10.6) every fill took 32.7-42.4 s and would have exceeded the old 30 s deadline."
   },
@@ -104,7 +137,13 @@
   "limitations": [
     "Component harness only, with the declared OS/native/MM substitutions of controlled_received; no installed kernel, boot or Linux80-cell physical claim.",
     "No SSH, VM, lab, mount, production or sink operations.",
-    "Besides terminal-kernel80 only --scenario allocate was rerun with the new compat.h (PASS, 48.98 s, receipt /home/paul/tmp/claude/k84/allocate-1/receipt.json sha256 b75bb1423fd6814e00c8853ca0830763ed38f90f04be890735e2069f096adcfb); the 'both' set was not rerun. The hold is zero unless CLOCK_HOLD is sent.",
+    "Besides terminal-kernel80 only --scenario allocate was rerun with the k84 compat.h (PASS, 48.98 s, receipt committed as allocate-1/receipt.json, sha256 b75bb1423fd6814e00c8853ca0830763ed38f90f04be890735e2069f096adcfb, copied by ml4 from /home/paul/tmp/claude/k84/allocate-1); the 'both' set was not rerun. The hold is zero unless CLOCK_HOLD is sent.",
     "Receipts name absolute paths under /home/paul/tmp/claude/k84; the prepared tree was deleted afterwards."
-  ]
+  ],
+  "field_notes": {
+    "error": "null when the stage passed with no runner limit_reason; otherwise the failing go test line (ml4).",
+    "peakdisk": "null: run.py's receipt records no peak owned disk (814's peakdisk came from an external wrapper). run.py itself refused any stage whose owned roots exceeded 8 GiB, so each passing stage stayed under that bound.",
+    "source_changes": "Bound inputs whose sha256 differed between source-binding.json and source-binding-after.json in the retained output directory; [] for every run (run.py also exits on any change).",
+    "harness": "These kernel80 runs belong to the k84 CLOCK_HOLD harness (consumer.c 98836201..., compat.h b9ccc88e...). ml4 replaced the hold with per-request nested-time accounting and re-recorded kernel80 in evidence/ml4."
+  }
 }
