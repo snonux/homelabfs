@@ -90,11 +90,17 @@ MOUNT_OPTIONS = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536"
 # bl4 (s64): the options of a plan with `fd_attr_candidate_sha256` (see
 # validate_plan); bootstrap_remote.py's copy is pinned equal by a test.
 MOUNT_OPTIONS_FD_ATTR = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536"
-# bl4/nl4: the optional plan fields come together or not at all. The kernel
-# plan is the workstation copy of the G5 plan (rocky_kernel.py plan), whose
-# bytes `kernel.plan_sha256` pins; its version is rocky_kernel.PLAN_VERSION
-# (a test pins the equality) and JSON_LIMIT bounds it there as here.
-FD_ATTR_FIELDS = ("fd_attr_candidate_sha256", "fd_attr_kernel_plan")
+# bl4/nl4: the optional plan fields come together or not at all. The
+# candidate manifest is the package's manifest.json, whose SHA256 is the
+# candidate digest (tools/integration/artifacts/package.py, read_json's
+# 16 MiB bound); CANDIDATE_DAEMON/EXPORTER are its daemon and exporter entries
+# (assemble.py's names). The kernel plan is the workstation copy of the G5
+# plan (rocky_kernel.py plan), whose bytes `kernel.plan_sha256` pins; its
+# version is rocky_kernel.PLAN_VERSION (a test pins the equality) and
+# JSON_LIMIT bounds it there as here.
+FD_ATTR_FIELDS = ("fd_attr_candidate_sha256", "fd_attr_candidate_manifest", "fd_attr_kernel_plan")
+CANDIDATE_MANIFEST_LIMIT = 16 << 20
+CANDIDATE_DAEMON, CANDIDATE_EXPORTER = "freebsd/hfs-controlled-runtime", "freebsd/bhyve"
 KERNEL_PLAN_VERSION = "homelabfs-zq3-rocky-kernel-plan/1"
 KERNEL_PLAN_LIMIT = 1 << 20
 STAGES = ("AWAITING_OPERATOR_ENROLLMENT", "AWAITING_GUEST_BIND", "READY")
@@ -280,12 +286,14 @@ def validate_plan(plan):
     bl4: the optional `fd_attr_candidate_sha256` names the candidate the run
     installs; only a candidate whose guest kernel, lib9p exporter and daemon
     carry s64 (controller.FD_ATTR) may be named, and the mounts then add
-    hfs_fdattr. It comes with `fd_attr_kernel_plan`, through which load_plan
-    checks that the name is the candidate the run actually installs (nl4,
-    check_fd_attr_kernel_plan). Absent, the plan keeps its pre-bl4 bytes and
-    mounts without the option, so an older candidate is never mounted with it.
+    hfs_fdattr. It comes with `fd_attr_candidate_manifest` and
+    `fd_attr_kernel_plan`, through which load_plan checks that the guest
+    kernel the run installs and the daemon and exporter it runs are that
+    candidate's (nl4, check_fd_attr_candidate). Absent, the plan keeps its
+    pre-bl4 bytes and mounts without the option, so an older candidate is
+    never mounted with it.
     """
-    # One fd_attr field alone makes the closed-key check fail: both or none.
+    # A partial set of fd_attr fields makes the closed-key check fail.
     present = isinstance(plan, dict) and any(name in plan for name in FD_ATTR_FIELDS)
     optional = list(FD_ATTR_FIELDS) if present else []
     closed(plan, ["version", "run_id", "bootstrap_seconds", "signer", "mounts", "remote_sha256"] +
@@ -318,37 +326,100 @@ def validate_fd_attr(plan):
         controller.require_fd_attr(plan["fd_attr_candidate_sha256"])
     except controller.Refused as failure:
         raise Refused("fd_attr_candidate_sha256: " + str(failure)) from None
+    safe_path(plan["fd_attr_candidate_manifest"], "fd_attr_candidate_manifest")
     safe_path(plan["fd_attr_kernel_plan"], "fd_attr_kernel_plan")
 
 
+def check_fd_attr_candidate(plan, config):
+    """nl4: all three s64 parts the run uses are the named candidate's.
+
+    hfs_fdattr is safe only if the guest kernel, the exporter and the daemon
+    all carry s64, so each is tied to `fd_attr_candidate_sha256` here, on the
+    workstation before launch: the kernel through the G5 kernel plan
+    (check_fd_attr_kernel_plan), the daemon and exporter through the
+    candidate's package manifest (check_fd_attr_binaries). `config` is the
+    parsed runtime config check_runtime_config read.
+    """
+    check_fd_attr_kernel_plan(plan)
+    check_fd_attr_binaries(plan, config)
+
+
+def fd_attr_input(plan, field, pin, bound, what):
+    """One local fd_attr input read under `pin`, parsed as a JSON object."""
+    try:
+        raw = controller.verified_bytes(plan[field], pin, bound)
+    except controller.Refused as failure:
+        raise Refused("{}: {} ({} pins its bytes)".format(field, failure, what)) from None
+    value = parse(raw)
+    require(isinstance(value, dict), field + ": JSON object required")
+    return value
+
+
 def check_fd_attr_kernel_plan(plan):
-    """nl4: the named fd_attr candidate is the one the run installs.
+    """The guest kernel: the candidate the G5 kernel plan installs.
 
     The bootstrap installs nothing itself: rocky_kernel.py on Rocky installs
     and admits the candidate its G5 plan names, and the admission step runs it
     with `--plan-sha256 kernel.plan_sha256`. So the plan bytes pinned there
-    decide the candidate. `fd_attr_kernel_plan` is the workstation copy Phase
-    0 wrote; read under that same pin, its `manifest_sha256` must equal
-    `fd_attr_candidate_sha256`, or a plan naming an s64 candidate would turn
-    on hfs_fdattr for a run whose pre-s64 exporter or daemon cannot answer
-    it. The admission manifest cannot serve: it lists what the booted kernel
-    loaded, not which candidate package it came from. Checked locally, before
-    launch.
+    decide the kernel. `fd_attr_kernel_plan` is the workstation copy Phase 0
+    wrote (a different path from Rocky's `kernel.plan`; the shared pin ties
+    them); read under that pin, its `manifest_sha256` must equal
+    `fd_attr_candidate_sha256`. The admission manifest cannot serve: it lists
+    what the booted kernel loaded, not which candidate package it came from.
     """
-    try:
-        raw = controller.verified_bytes(plan["fd_attr_kernel_plan"], plan["kernel"]["plan_sha256"],
-                                        KERNEL_PLAN_LIMIT)
-    except controller.Refused as failure:
-        raise Refused("fd_attr_kernel_plan: {} (kernel.plan_sha256 pins its bytes)".format(failure)) from None
-    kernel = parse(raw)
-    require(isinstance(kernel, dict) and kernel.get("version") == KERNEL_PLAN_VERSION,
+    kernel = fd_attr_input(plan, "fd_attr_kernel_plan", plan["kernel"]["plan_sha256"], KERNEL_PLAN_LIMIT,
+                           "kernel.plan_sha256")
+    require(kernel.get("version") == KERNEL_PLAN_VERSION,
             "fd_attr_kernel_plan: not a G5 kernel plan ({})".format(KERNEL_PLAN_VERSION))
-    require(kernel.get("kernel_release") == plan["kernel"]["release"],
-            "fd_attr_kernel_plan: kernel_release {!r} is not kernel.release {}".format(
-                kernel.get("kernel_release"), plan["kernel"]["release"]))
+    for name, expected in (("run_id", plan["run_id"]), ("kernel_release", plan["kernel"]["release"])):
+        require(kernel.get(name) == expected, "fd_attr_kernel_plan: {} {!r} is not the plan's {}".format(
+            name, kernel.get(name), expected))
     require(kernel.get("manifest_sha256") == plan["fd_attr_candidate_sha256"],
             "fd_attr_candidate_sha256 is not the candidate the kernel plan installs ({!r})".format(
                 kernel.get("manifest_sha256")))
+
+
+def check_fd_attr_binaries(plan, config):
+    """The daemon and exporter: the named candidate package's own bytes.
+
+    The daemon the host runs is pinned only by `runtime.sha256` (host
+    preflight checks the executable against it), the exporter only by the
+    runtime config's Exporter.SHA256 (the runtime checks bhyve against it
+    before exec). Neither pin names a candidate, so an r21 daemon or
+    exporter under an s64 name would pass. `fd_attr_candidate_manifest` is
+    the package's manifest.json, read under `fd_attr_candidate_sha256`; its
+    daemon and exporter entries must be exactly those two pins.
+    """
+    manifest = fd_attr_input(plan, "fd_attr_candidate_manifest", plan["fd_attr_candidate_sha256"],
+                             CANDIDATE_MANIFEST_LIMIT, "fd_attr_candidate_sha256")
+    files = manifest.get("files")
+    require(isinstance(files, dict), "fd_attr_candidate_manifest: no file inventory")
+    daemon = candidate_entry(files, CANDIDATE_DAEMON, "daemon")
+    require(plan["runtime"]["sha256"] == daemon,
+            "runtime.sha256 {} is not the candidate's daemon {} ({})".format(
+                plan["runtime"]["sha256"], daemon, CANDIDATE_DAEMON))
+    exporter = config_exporter_sha256(config)
+    expected = candidate_entry(files, CANDIDATE_EXPORTER, "exporter")
+    require(exporter == expected, "runtime config Exporter.SHA256 {} is not the candidate's exporter {} ({})".format(
+        exporter, expected, CANDIDATE_EXPORTER))
+
+
+def candidate_entry(files, name, kind):
+    entry = files.get(name)
+    require(isinstance(entry, dict) and entry.get("kind") == kind and isinstance(entry.get("sha256"), str) and
+            HASH.match(entry["sha256"]) is not None,
+            "fd_attr_candidate_manifest: no {} entry {}".format(kind, name))
+    return entry["sha256"]
+
+
+def config_exporter_sha256(config):
+    """Exporter.SHA256 of the runtime config: Go encodes [32]byte as 32 numbers."""
+    exporter = config.get("Exporter")
+    value = exporter.get("SHA256") if isinstance(exporter, dict) else None
+    require(isinstance(value, list) and len(value) == 32 and
+            all(type(item) is int and 0 <= item <= 255 for item in value),
+            "runtime config Exporter.SHA256 must be 32 bytes")
+    return bytes(value).hex()
 
 
 def check_field(section, name, value):
@@ -393,8 +464,6 @@ def load_plan(path, expected_sha256):
     require(digest(raw) == expected_sha256, "plan bytes differ from the pinned SHA256")
     plan = parse(raw)
     validate_plan(plan)
-    if "fd_attr_candidate_sha256" in plan:
-        check_fd_attr_kernel_plan(plan)
     inputs = {"ssh": controller.verified_bytes(plan["ssh"]["path"], plan["ssh"]["sha256"], 16 << 20),
               "template": private_input(plan["prep"]["template"], plan["prep"]["template_sha256"])}
     for name in ("host", "guest"):
@@ -405,6 +474,8 @@ def load_plan(path, expected_sha256):
     # Local misconfiguration must refuse here, before the launch consumes
     # Rocky's one-shot boot; each fill step re-checks the prep pin anyway.
     controller.verified_bytes(plan["prep"]["path"], plan["prep"]["sha256"], 256 << 20)
+    # On an fd_attr plan this also ties kernel, daemon and exporter to the
+    # named s64 candidate (nl4, check_fd_attr_candidate).
     check_runtime_config(private_input(plan["prep"]["config"], plan["prep"]["config_sha256"]), plan)
     inputs["remote"] = controller.verified_bytes(str(REMOTE), plan["remote_sha256"], 256 << 10)
     return raw, plan, inputs
@@ -422,13 +493,16 @@ def private_input(path, expected):
 def check_runtime_config(raw, plan):
     """The bundle's runtime-config.json must match the plan's bootstrap bound
     and runtime paths. It also holds the run's host receipt private keys: only
-    these three fields are read, nothing of it is kept or logged."""
+    these three fields are read here, and on an fd_attr plan Exporter.SHA256
+    (check_fd_attr_binaries); nothing of it is kept or logged."""
     config = parse(raw)
     require(config.get("BootstrapSeconds") == plan["bootstrap_seconds"],
             "plan bootstrap_seconds differs from the runtime config's BootstrapSeconds")
     require((config.get("OwnerDirectory"), config.get("EnrollmentFile")) ==
             (plan["runtime"]["owner_directory"], plan["runtime"]["enrollment_file"]),
             "plan OwnerDirectory/EnrollmentFile differ from the runtime config")
+    if "fd_attr_candidate_sha256" in plan:
+        check_fd_attr_candidate(plan, config)
 
 
 def template_tags(raw, plan):

@@ -704,8 +704,11 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
      next candidate built from main is admitted) the bootstrap plan names it
      in `fd_attr_candidate_sha256`, with `fd_attr_kernel_plan` pointing at
      the Phase 0 workstation copy of the G5 kernel plan (its bytes pinned by
-     `kernel.plan_sha256`, its `manifest_sha256` that same candidate, nl4:
-     refused before launch otherwise), and both mounts add `hfs_fdattr`
+     `kernel.plan_sha256`, its `manifest_sha256` that same candidate) and
+     `fd_attr_candidate_manifest` at the candidate package's `manifest.json`
+     (its daemon must be `runtime.sha256`, its `freebsd/bhyve` the runtime
+     config's `Exporter.SHA256`); nl4 refuses before launch otherwise. Both
+     mounts add `hfs_fdattr`
      (`trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`);
      each mountinfo row must then show `,cache=mmap,hfs_fdattr`, and the batch
      plan and every request carry `"fd_attr": true`; `fill_plan.py batch`

@@ -425,9 +425,10 @@ def require_fd_attr(manifest_hash):
     Shared by the batch plan's `fd_attr` and the bootstrap plan's
     `fd_attr_candidate_sha256` (bootstrap.py), so both refuse an older
     candidate the same way before anything is mounted or dispatched. This
-    only says the named digest carries s64; that it is the candidate the run
-    installs is bootstrap.py's kernel-plan check, and that the batch names
-    the same one is fill_plan.py's (nl4).
+    only says the named digest carries s64; that the run's guest kernel,
+    daemon and exporter are that candidate's is bootstrap.py's
+    check_fd_attr_candidate, and that the batch names the same one is
+    fill_plan.py's (nl4).
     """
     require_candidate(manifest_hash)
     if manifest_hash not in FD_ATTR:

@@ -224,7 +224,8 @@ def run_evidence(run_dir, plan_sha256):
                        "mount_id": mount_id(details["mount-{}".format(index)], mount)})
     require(mounts[0]["mount_id"] != mounts[1]["mount_id"], "m0 and m1 report the same mount ID")
     # fd_attr_candidate: the s64 candidate the bootstrap plan named, which
-    # bootstrap.load_plan bound to its pinned kernel plan before launch (nl4).
+    # bootstrap.load_plan bound to the installed kernel and the run's daemon
+    # and exporter before launch (nl4, check_fd_attr_candidate).
     return dict(facts, run_id=plan["run_id"], mounts=mounts, fd_attr=mounted_fd_attr(details),
                 fd_attr_candidate=plan.get("fd_attr_candidate_sha256"))
 
