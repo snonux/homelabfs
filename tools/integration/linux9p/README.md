@@ -2459,3 +2459,67 @@ list are unchanged.
 The series was regenerated with `export.py --task 5f4` (0003: `hfs.h`,
 `hfs_session.c`, `hfs_file.c`; 0004: `hfs_lease.h`, `hfs_lease.c`,
 `hfs_view.c`, `hfs_mmap.c`). No candidate was rebuilt, booted or admitted.
+
+## fstat/fchmod/fchown/futimens through the open description (`s64`)
+
+GETATTR and SETATTR carried only the PATH grant, and the host re-walks a
+path grant's ancestry. So after a rename (by any client) or an unlink,
+fstat, fchmod, fchown and futimens on the open file got ESTALE. The host
+(157a132) accepts a second shape with the fd's DESCRIPTION grant. Patch 0003
+now sends it, following
+[docs/design/s64-fd-attr.md](../../../docs/design/s64-fd-attr.md):
+
+- **Mount option `hfs_fdattr`** (`hfs_cache_option`, `session->fd_attr`).
+  Without it the guest sends exactly the pre-s64 bytes. It is explicit
+  configuration, not negotiation: an old forwarder or host refuses the
+  described shape. A repeated option or a value (`hfs_fdattr=...`) is
+  EINVAL before enroll. `hfs_show_options` prints `,hfs_fdattr` after
+  `,cache=mmap`. A stock (non-hfs) 9p mount naming it is EINVAL
+  (`v9fs_hfs_only_option` in `vfs_super.c`), where stock 9p would ignore
+  it.
+- **When the described form is used** (`hfs_getattr_once`,
+  `hfs_setattr_attributes`): with ATTR_FILE and no ATTR_SIZE, the file's own
+  description. With an unlinked inode (i_nlink 0), a borrowed description
+  at once. Otherwise the path form, and after a host Stale (not a failed
+  transport, not a blocked session) borrowed descriptions. Keys are
+  canonical: `attributes`, `description`, `object`. TRUNCATE (ftruncate,
+  r64) is unchanged.
+- **Borrowing** (`hfs_args_listed_description`): a description of the same
+  object from `session->descriptions`, with its cap copied under
+  `session->lock`. `hfs_description_publish` now sets `description->cap`
+  there for OPEN and CREATE, and `hfs_description_discard` unlinks there
+  before it frees. Tokens already tried in this syscall are skipped, at
+  most `HFS_FD_ATTR_TRIES` (8) per syscall. -EACCES or -ESTALE from a
+  described call means a dead description (another process closed it), so
+  the walk moves on. The fd caller's own description stays listed while it
+  holds the file.
+- **Owner refusals stay real** (`hfs_setattr_borrowed`): after a SETATTR
+  -EACCES, a GETATTR through the same description (`HFS_ATTR_LAST`) tells
+  a dead description from the host's owner rule. On an owner refusal,
+  `hfs_setattr_refusal` reruns `setattr_prepare` on the fresh attributes
+  (-EPERM for a non-owner chmod or chown, as on a local filesystem). For
+  current times without write access it keeps the host's -EACCES.
+- **End of the walk** (`hfs_fd_attr_result`): nothing left is the path
+  form's -ESTALE (`-HFS_ENODESC`, kernel-internal 601). -EPROTO or -EINVAL
+  on a minor-0/1 session clears `fd_attr` once (old peer, one rate-limited
+  line). On a controlled session it is returned as it is.
+- **Invariant** (comment on `hfs_d_revalidate`): the Stale fallback relies
+  on no dentry outliving a walk.
+
+Tests:
+
+- `tests/setattr` adds `fdattr.inc`, the actual s64 helpers and
+  `hfs_getattr_once`, and `fdattr_cases.inc`. `hfs_call` logs every CALL
+  and takes scripted results. The design doc lists the cases. The mutants
+  "never skip a tried token" and "fallback ignores
+  transport_failed/blocked" both fail it.
+- `tests/mount_hello` adds the `fdattr*` mount cases and
+  `stock-fdattr-refused`.
+
+The lab tooling (`tools/lab/retained9p` `MOUNT_OPTIONS` and the mountinfo
+check) does not set `hfs_fdattr` yet. It must only once the guest, lib9p
+and host inputs are all s64. No guest run covers this yet.
+
+The series was regenerated with `export.py --task s64` (0003: `vfs_super.c`,
+`hfs.h`, `hfs_session.c`, `hfs_inode.c`, `hfs_file.c`). No candidate was
+rebuilt, booted or admitted.

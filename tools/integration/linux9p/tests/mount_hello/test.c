@@ -147,6 +147,7 @@ struct hfs_session {
 	struct p9_client *client;
 	void *control_completion, *retirement_completion;
 	bool closing, unmounting, blocked, retained, terminal_pending;
+	bool fd_attr; /* s64: the hfs_fdattr mount option */
 	unsigned long block_reported;
 	u16 exporter_error; /* oc4: printed by hfs_session_block */
 	/* 5f4: counts its wake-ups (hfs_session_stop_wake); see wake_up_all. */
@@ -494,6 +495,20 @@ static const struct mount_case cases[] = {
 	  ECHO_SENT, -EINVAL, false, false, NULL },
 	{ "cachetag", ZQ3_OPTIONS ",cachetag=zq3", 65536, HFS_TERMINAL_FEATURES, ECHO_SENT,
 	  -EINVAL, false, false, NULL },
+	/* s64: hfs_fdattr once and without a value turns the described
+	 * GETATTR/SETATTR on and is shown after cache=mmap; anything else
+	 * naming it is refused before enroll.
+	 */
+	{ "fdattr", ZQ3_OPTIONS ",hfs_fdattr", 65536, HFS_TERMINAL_FEATURES, ECHO_SENT, 0,
+	  true, true, ",cache=mmap,hfs_fdattr,msize=65536,trans=virtio,version=9P2000.L.hfs1.4" },
+	{ "fdattr-first", "hfs_fdattr," ZQ3_OPTIONS, 65536, HFS_MAPPED_FEATURES, ECHO_SENT, 0,
+	  true, true, ",cache=mmap,hfs_fdattr,msize=65536,trans=virtio,version=9P2000.L.hfs1.4" },
+	{ "fdattr-repeated", ZQ3_OPTIONS ",hfs_fdattr,hfs_fdattr", 65536, HFS_TERMINAL_FEATURES,
+	  ECHO_SENT, -EINVAL, false, false, NULL },
+	{ "fdattr-value", ZQ3_OPTIONS ",hfs_fdattr=1", 65536, HFS_TERMINAL_FEATURES, ECHO_SENT,
+	  -EINVAL, false, false, NULL },
+	{ "fdattr-empty-value", ZQ3_OPTIONS ",hfs_fdattr=", 65536, HFS_TERMINAL_FEATURES,
+	  ECHO_SENT, -EINVAL, false, false, NULL },
 };
 
 /* The guest.py check_tuple / pod_fixture.py MOUNT_OPTIONS set must be a
@@ -563,12 +578,28 @@ static void run_case(const struct mount_case *c)
 	}
 	if (!c->error) {
 		CHECK(result == &root && fixture.mounted && !fixture.retained);
+		/* s64: the session carries the parsed hfs_fdattr. */
+		CHECK(((struct hfs_session *)super.s_fs_info)->fd_attr ==
+		      !!strstr(c->shown, "hfs_fdattr"));
 		check_shown(c);
 		return;
 	}
 	CHECK(IS_ERR(result) && PTR_ERR(result) == c->error);
 	/* The claimed controlled identity stays owned after the failure. */
 	CHECK(!fixture.mounted && fixture.retained);
+}
+
+/* s64: v9fs_mount refuses hfs_fdattr (any form) on a stock version, where
+ * 9p would ignore it; other options, and look-alike names, are not hfs-only.
+ */
+static void run_stock_fdattr_case(void)
+{
+	CHECK(v9fs_hfs_only_option("trans=virtio,version=9P2000.L,hfs_fdattr"));
+	CHECK(v9fs_hfs_only_option("hfs_fdattr=0,trans=virtio"));
+	CHECK(!v9fs_hfs_only_option("trans=virtio,version=9P2000.L,cache=mmap"));
+	CHECK(!v9fs_hfs_only_option("hfs_fdattrs,xhfs_fdattr,hfs_fdatt"));
+	CHECK(!v9fs_hfs_only_option(""));
+	CHECK(!v9fs_hfs_only_option(NULL));
 }
 
 /* Stock 9p keeps eliding the default msize; only hfs always prints it. */
@@ -832,11 +863,12 @@ int main(void)
 	for (i = 0; i < ARRAY_SIZE(cases); i++)
 		failures += !run_child(cases[i].name, &cases[i], NULL);
 	failures += !run_child("stock-default-msize", NULL, run_stock_case);
+	failures += !run_child("stock-fdattr-refused", NULL, run_stock_fdattr_case);
 	failures += !run_child("session-block-once", NULL, run_block_case);
 	failures += !run_child("session-block-ratelimit", NULL, run_block_ratelimit_case);
 	failures += !run_child("unmount-fence-log", NULL, run_stop_block_case);
 	failures += !run_child("unmount-reopened-view", NULL, run_reopened_stop_case);
 	failures += !run_child("enrollment-sources-floor", NULL, run_bounds_case);
-	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 6, failures);
+	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 7, failures);
 	return failures ? 1 : 0;
 }

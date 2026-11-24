@@ -778,11 +778,11 @@ _credentials(const Hfs9pJson *j, uint32_t obj) {
    return (0);
 }
 
-/* Validate the fields needed to route safely. Capabilities, times, view unions
- * and Unix semantics are revalidated by the host's closed command parser and
- * service before effects. They are never interpreted as native POSIX requests. */
-static int
-_args(const Hfs9pJson *j, uint32_t opcode, uint32_t args) {
+/* The original key set of opcode's args, or NULL for an unknown opcode.
+ * Order is irrelevant here (each key is looked up by name); the host's closed
+ * parser enforces canonical bytes. */
+static const char *
+_args_opcode_keys(const Hfs9pJson *j, uint32_t opcode) {
    static const struct {
       const char *op;
       const char *keys;
@@ -807,18 +807,78 @@ _args(const Hfs9pJson *j, uint32_t opcode, uint32_t args) {
       {"FORGET", "object count"}, {"PROCESS_EXIT", "process exit_sequence"},
       {"DRAIN_WRITE", "description offset data recall dirty_entry reservation"}
    };
-   const char *keys = NULL;
-   char name[32];
-   uint32_t token;
-   uint64_t value;
-   unsigned fields = 0;
    for (unsigned i = 0; i < sizeof(operations) / sizeof(operations[0]); i++) {
-      if (hfs9p_json_equal(j, opcode, operations[i].op)) {
-         keys = operations[i].keys;
-         break;
+      if (hfs9p_json_equal(j, opcode, operations[i].op))
+         return (operations[i].keys);
+   }
+   return (NULL);
+}
+
+/* The exact key set routed for opcode's args object, or NULL for an unknown
+ * opcode. */
+static const char *
+_args_keys(const Hfs9pJson *j, uint32_t opcode, uint32_t args) {
+   /* s64: GETATTR/SETATTR may also carry the fd's DESCRIPTION (fstat,
+    * fchmod, fchown, futimens after rename or unlink). The host's closed
+    * parser checks it is a nonnull DESCRIPTION capability naming the
+    * object's own object; the forwarder only routes. TRUNCATE and SYNC
+    * already list "description"; any other opcode with an extra one still
+    * fails _args's exact field count. */
+   static const struct {
+      const char *op;
+      const char *keys;
+   } described[] = {
+      {"GETATTR", "description object"},
+      {"SETATTR", "attributes description object"},
+   };
+   const char *keys = _args_opcode_keys(j, opcode);
+   uint32_t token;
+   if (!keys || hfs9p_json_key(j, args, "description", &token))
+      return (keys);
+   for (unsigned i = 0; i < sizeof(described) / sizeof(described[0]); i++) {
+      if (hfs9p_json_equal(j, opcode, described[i].op))
+         keys = described[i].keys;
+   }
+   return (keys);
+}
+
+/* The routing bounds of one named value: numeric limits and hex data. */
+static int
+_args_value(const Hfs9pJson *j, const char *name, uint32_t token) {
+   uint64_t value;
+   if (!strcmp(name, "mode") || !strcmp(name, "umask") ||
+       !strcmp(name, "offset") || !strcmp(name, "size") ||
+       !strcmp(name, "max_end")) {
+      uint64_t max = !strcmp(name, "mode") ? 4095 :
+          (!strcmp(name, "umask") ? 511 : INT64_MAX);
+      if (hfs9p_json_u64(j, token, &value) || value > max)
+         return (EINVAL);
+   }
+   if (!strcmp(name, "data")) {
+      Hfs9pToken t = j->tokens[token];
+      if (t.type != '"' || t.end - t.start > 131074 ||
+          (t.end - t.start) % 2)
+         return (EINVAL);
+      for (uint32_t i = t.start + 1; i < t.end - 1; i++) {
+         if (_hex_digit(j->bytes[i]) < 0)
+            return (EINVAL);
       }
    }
-   if (!keys || j->tokens[args].type != '{')
+   return (0);
+}
+
+/* Validate the fields needed to route safely. Capabilities, times, view unions
+ * and Unix semantics are revalidated by the host's closed command parser and
+ * service before effects. They are never interpreted as native POSIX requests. */
+static int
+_args(const Hfs9pJson *j, uint32_t opcode, uint32_t args) {
+   if (j->tokens[args].type != '{')
+      return (EINVAL);
+   const char *keys = _args_keys(j, opcode, args);
+   char name[32];
+   uint32_t token;
+   unsigned fields = 0;
+   if (!keys)
       return (EINVAL);
    while (*keys) {
       size_t n = strcspn(keys, " ");
@@ -830,26 +890,9 @@ _args(const Hfs9pJson *j, uint32_t opcode, uint32_t args) {
       if (*keys)
          keys++;
       fields++;
-      if (hfs9p_json_key(j, args, name, &token))
+      if (hfs9p_json_key(j, args, name, &token) ||
+          _args_value(j, name, token))
          return (EINVAL);
-      if (!strcmp(name, "mode") || !strcmp(name, "umask") ||
-          !strcmp(name, "offset") || !strcmp(name, "size") ||
-          !strcmp(name, "max_end")) {
-         uint64_t max = !strcmp(name, "mode") ? 4095 :
-             (!strcmp(name, "umask") ? 511 : INT64_MAX);
-         if (hfs9p_json_u64(j, token, &value) || value > max)
-            return (EINVAL);
-      }
-      if (!strcmp(name, "data")) {
-         Hfs9pToken t = j->tokens[token];
-         if (t.type != '"' || t.end - t.start > 131074 ||
-             (t.end - t.start) % 2)
-            return (EINVAL);
-         for (uint32_t i = t.start + 1; i < t.end - 1; i++) {
-            if (_hex_digit(j->bytes[i]) < 0)
-               return (EINVAL);
-         }
-      }
    }
    return (j->tokens[args].count == fields ? 0 : EINVAL);
 }

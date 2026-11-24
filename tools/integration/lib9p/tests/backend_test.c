@@ -713,6 +713,52 @@ routing_cases(void) {
    }
 }
 
+/* s64: _args on one {"op":..,"args":..} document. The capability values are
+ * placeholders: the forwarder only routes, the host's closed parser checks
+ * that a description is a nonnull DESCRIPTION capability of the object. */
+static int
+route_args(const char *body) {
+   Hfs9pToken tokens[64];
+   Hfs9pJson j = {(const uint8_t *)body, strlen(body), tokens, 0};
+   uint32_t op, args;
+   assert(!hfs9p_json_parse(&j));
+   assert(!hfs9p_json_key(&j, 0, "op", &op));
+   assert(!hfs9p_json_key(&j, 0, "args", &args));
+   return (_args(&j, op, args));
+}
+
+/* s64: GETATTR and SETATTR also route with the fd's description (fstat,
+ * fchmod, fchown and futimens after rename or unlink); their original path
+ * shapes are unchanged. An extra description on any other opcode, or a
+ * described SETATTR without attributes, still fails the exact field set. */
+static void
+described_attr_args_test(void) {
+   const char *const accepted[] = {
+      "{\"args\":{\"object\":{}},\"op\":\"GETATTR\"}",
+      "{\"args\":{\"description\":{},\"object\":{}},\"op\":\"GETATTR\"}",
+      "{\"args\":{\"attributes\":{},\"object\":{}},\"op\":\"SETATTR\"}",
+      "{\"args\":{\"attributes\":{},\"description\":{},\"object\":{}},"
+         "\"op\":\"SETATTR\"}",
+      "{\"args\":{\"description\":null,\"object\":{},\"scope\":\"data\"},"
+         "\"op\":\"SYNC\"}",
+   };
+   const char *const refused[] = {
+      "{\"args\":{\"description\":{},\"object\":{}},\"op\":\"READLINK\"}",
+      "{\"args\":{\"description\":{},\"flags\":{},\"object\":{}},"
+         "\"op\":\"OPEN\"}",
+      "{\"args\":{\"description\":{},\"object\":{}},\"op\":\"SETATTR\"}",
+      "{\"args\":{\"description\":{}},\"op\":\"GETATTR\"}",
+      "{\"args\":{\"attributes\":{},\"description\":{}},\"op\":\"SETATTR\"}",
+      "{\"args\":{\"description\":{},\"extra\":1,\"object\":{}},"
+         "\"op\":\"GETATTR\"}",
+      "{\"args\":{\"object\":{},\"size\":0},\"op\":\"GETATTR\"}",
+   };
+   for (unsigned i = 0; i < sizeof(accepted) / sizeof(accepted[0]); i++)
+      assert(route_args(accepted[i]) == 0);
+   for (unsigned i = 0; i < sizeof(refused) / sizeof(refused[0]); i++)
+      assert(route_args(refused[i]) == EINVAL);
+}
+
 static char *
 rewrite_body(const char *body, uint64_t number, const char *reclaim) {
    Hfs9pToken tokens[HFS9P_TOKENS];
@@ -2420,6 +2466,7 @@ main(int argc, char **argv) {
    parser_tests();
    core_tests();
    routing_cases();
+   described_attr_args_test();
    wait_tests();
    capacity_tests();
    unavailable_tests();

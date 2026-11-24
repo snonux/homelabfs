@@ -3,10 +3,10 @@
 Status: the host side is implemented (Go, this task): the schema, the grant
 checks and dispatch in `internal/guestbridge`, and the spec text in
 [Retained-9p-protocol.md](../spec/Retained-9p-protocol.md). fsservice needed
-no change. The guest kernel and lib9p forwarder changes are specified below
-but not built. They need a local build, so the patches under
-`tools/integration/linux9p/patches` and `tools/integration/lib9p/src` were
-not edited.
+no change. The guest kernel (patch 0003) and lib9p forwarder changes are
+implemented as specified below and compiled, with local harness tests
+(see "Guest and forwarder tests" at the end). They have not run in a guest
+or the lab, and the lab tooling does not set `hfs_fdattr` yet.
 
 ## Problem
 
@@ -191,7 +191,7 @@ stops. That fails closed but costs the session. Therefore:
   revision, not with this gap fix. If it is added, `hfs_fdattr` becomes
   "enrolled features include bit 15".
 
-## Guest kernel change (not built; `0003-hfs1-guest-vfs.patch`)
+## Guest kernel change (`0003-hfs1-guest-vfs.patch`)
 
 ### What the VFS hands the filesystem
 
@@ -493,7 +493,7 @@ relative walks (v64 annotation on s64). A cwd holds no open description, and
 `hfs_permission` → `hfs_refresh` uses the inode's object capability. That
 needs a separate directory-handle design.
 
-## lib9p forwarder change (not built; `tools/integration/lib9p/src/hfs9p.c`)
+## lib9p forwarder change (`tools/integration/lib9p/src/hfs9p.c`)
 
 `_args` routes on a single fixed key string per opcode and requires the exact
 field count. Add the described alternatives:
@@ -581,4 +581,47 @@ ControlledCut, journaled SETATTR):
   directly through the controlled cut. Described GETATTR and SETATTR are
   Stale.
 
-Not covered here: the guest and forwarder changes, and a lab run.
+## Guest and forwarder tests
+
+The guest code follows the sketches above, with these differences:
+
+- One `enum hfs_attr_authority` (PATH, FILE, BORROWED, LAST) selects the
+  description key for both opcodes (`hfs_args_description`).
+  `hfs_args_listed_description` serves BORROWED and LAST (the
+  `hfs_getattr_send_last` of the sketch).
+- `hfs_description_publish` sets `description->cap` under `session->lock`
+  for OPEN and CREATE, so the walk never reads a cap that is being
+  published.
+- The walk also stops on a failed transport or blocked session
+  (`hfs_fd_attr_dead`), and `hfs_setattr_refusal` reruns `setattr_prepare`
+  on the probe's fresh attributes.
+- A stock (non-hfs) 9p mount naming `hfs_fdattr` is refused with EINVAL
+  (`v9fs_hfs_only_option` in `v9fs_mount`), since stock 9p would ignore it.
+
+Local tests (no kernel, VM or lab):
+
+- `tools/integration/linux9p/tests/setattr` (`fdattr_cases.inc`) runs the
+  actual `hfs_getattr_once`, `hfs_setattr` and every s64 helper against a
+  logging `hfs_call`. It checks the exact bytes of every CALL in order:
+  an `hfs_fdattr`-less mount sends only the path forms, even for nlink 0 or
+  ATTR_FILE. It checks the rename fallback for fchmod, fchown,
+  futimens(NULL) and fstat, the direct described form for nlink 0, and the
+  walk past a dead description of the same object (with a SETATTR probe),
+  never sending another object's description. It also checks the owner
+  refusal (-EPERM from fresh attributes, -EACCES for current times, and a
+  moved-target probe) and that no description left gives -ESTALE, bounded
+  at `HFS_FD_ATTR_TRIES`. An old peer on minor 0/1 clears `fd_attr` once;
+  on minor 4 the error is returned. A failed transport or blocked session
+  gets no fallback. ATTR_FILE uses its own description. ftruncate is
+  unchanged. `hfs_call` checks that `session->lock` is free.
+- `tests/mount_hello`: `hfs_fdattr` mounts and shows
+  `,cache=mmap,hfs_fdattr,...`. A repeated option, `hfs_fdattr=1` or an
+  empty value is refused before enroll, and `v9fs_hfs_only_option` is
+  checked.
+- lib9p `backend_test` (`described_attr_args_test`): both described shapes
+  route. A description on READLINK or OPEN, a described SETATTR without
+  `attributes`, a GETATTR without `object`, and extra keys are EINVAL.
+
+Not covered: a guest run, the lab tooling's `MOUNT_OPTIONS`/mountinfo
+check for `hfs_fdattr`, and the guest-suite `stat(old name)` ENOENT guard
+described above.
