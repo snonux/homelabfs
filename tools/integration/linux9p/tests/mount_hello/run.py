@@ -18,6 +18,9 @@ real Bounds of the zq3 spec and the controlledruntime guest artifacts.
 Since z84 it also copies hfs_controlled_view_idle: kill_sb stops after
 kill_anon_super and the control flush, and a once-reopened LIVE view with
 closed admission and no remaining owner stops silently.
+
+Since s64 it copies the hfs_fdattr option parsing (hfs_fdattr_token,
+hfs_mount_options) and v9fs_hfs_only_option, the stock-mount refusal.
 """
 import argparse
 import hashlib
@@ -103,7 +106,10 @@ def extract(source, output):
     (output / 'mount.inc').write_text(''.join(build.function(session, name) for name in (
         # 5f4: the stop wake-up and blocked setter hfs_session_block uses.
         'hfs_session_stop_wake', 'hfs_session_mark_blocked',
-        'hfs_session_block', 'hfs_session_fence', 'hfs_cache_option', 'hfs_session_new', 'hfs_mount_enroll', 'hfs_trace_register',
+        # s64: hfs_fdattr parsing and the stock-mount refusal helper.
+        'hfs_session_block', 'hfs_session_fence', 'hfs_fdattr_token', 'v9fs_hfs_only_option',
+        'hfs_cache_option', 'hfs_mount_options', 'hfs_session_new', 'hfs_mount_enroll',
+        'hfs_trace_register',
         'hfs_mount_client', 'hfs_mount_hello', 'hfs_mount_fail', 'v9fs_hfs_mount')))
     # g64: the mountinfo super options of an hfs superblock.
     client = texts['net/9p/client.c']

@@ -81,17 +81,22 @@ diff --git a/fs/9p/vfs_super.c b/fs/9p/vfs_super.c
  
  static const struct super_operations v9fs_super_ops, v9fs_super_ops_dotl;
  
-@@ -117,6 +118,9 @@
+@@ -117,6 +118,14 @@
  	struct p9_fid *fid;
  	int retval = 0;
  
 +	if (v9fs_hfs_selected(data))
 +		return v9fs_hfs_mount(fs_type, flags, dev_name, data);
++	/* s64: an hfs-only option without an hfs version would be ignored by
++	 * stock 9p, which hides a misconfigured mount; refuse it instead.
++	 */
++	if (v9fs_hfs_only_option(data))
++		return ERR_PTR(-EINVAL);
 +
  	p9_debug(P9_DEBUG_VFS, "\n");
  
  	v9ses = kzalloc(sizeof(struct v9fs_session_info), GFP_KERNEL);
-@@ -217,6 +221,11 @@
+@@ -217,6 +226,11 @@
  static void v9fs_kill_super(struct super_block *s)
  {
  	struct v9fs_session_info *v9ses = s->s_fs_info;
@@ -107,7 +112,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,519 @@
+@@ -0,0 +1,537 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -141,6 +146,11 @@ new file mode 100644
 + * other caller turns it into -ESTALE. Above the kernel's internal 512-530.
 + */
 +#define HFS_ETARGET_MOVED 600
++/* s64: kernel-internal "no open description of this object is left to try"
++ * for a described GETATTR/SETATTR (hfs_inode.c). Never returned to
++ * userspace; distinct from a host NotFound (-ENOENT).
++ */
++#define HFS_ENODESC 601
 +/* kill_sb's bounded wait for a view to settle before the stop (z84). */
 +#define HFS_UNMOUNT_SETTLE_MS 2000U
 +/* session->block_reported bit of hfs_mmap_fail's once-per-session line (1a4). */
@@ -454,6 +464,14 @@ new file mode 100644
 +	 * resumed; a new mount gets a new session.
 +	 */
 +	bool transport_failed;
++	/* s64: the hfs_fdattr mount option. When set, GETATTR and SETATTR
++	 * that the path form cannot serve (an unlinked inode, or a host Stale
++	 * after rename or unlink) are sent with an open DESCRIPTION of the same
++	 * object (hfs_inode.c). Off (the default) sends only the original path
++	 * shapes, exactly the pre-s64 bytes. Read with READ_ONCE; cleared once
++	 * on a minor-0/1 session whose forwarder or host refuses the shape.
++	 */
++	bool fd_attr;
 +	/* 5f4: woken (hfs_session_stop_wake) whenever a stop that
 +	 * hfs_view_refused or hfs_session_poll_halt sees is set: blocked
 +	 * (hfs_session_mark_blocked), closing or transport_failed. The paths
@@ -528,12 +546,14 @@ new file mode 100644
 +int v9fs_hfs_register_provider(const struct hfs_provider *provider);
 +int v9fs_hfs_unregister_provider(const struct hfs_provider *provider);
 +bool v9fs_hfs_selected(const char *options);
++bool v9fs_hfs_only_option(const char *options);
 +struct dentry *v9fs_hfs_mount(struct file_system_type *type, int flags,
 +			    const char *device, void *options);
 +bool v9fs_hfs_super(const struct super_block *sb);
 +void v9fs_hfs_kill_super(struct super_block *sb);
 +#else
 +static inline bool v9fs_hfs_selected(const char *options) { return false; }
++static inline bool v9fs_hfs_only_option(const char *options) { return false; }
 +static inline struct dentry *v9fs_hfs_mount(struct file_system_type *type,
 +		int flags, const char *device, void *options)
 +{
@@ -613,6 +633,9 @@ new file mode 100644
 +			    struct hfs_description **out);
 +void hfs_description_discard(struct hfs_session *session,
 +			     struct hfs_description *description);
++int hfs_description_publish(struct hfs_session *session,
++			    const struct hfs_json *result,
++			    struct hfs_description *description);
 +void hfs_flags_write(struct hfs_buf *args, unsigned int flags, bool create);
 +void hfs_session_fence(struct hfs_session *session, const char *reason,
 +		       const char *operation);
@@ -631,7 +654,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3662 @@
+@@ -0,0 +1,3710 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -3386,6 +3409,33 @@ new file mode 100644
 +	return false;
 +}
 +
++/* s64: whether the option p[0..len) is "hfs_fdattr" or "hfs_fdattr=...". */
++static bool hfs_fdattr_token(const char *p, size_t len)
++{
++	static const char fdattr[] = "hfs_fdattr";
++	size_t n = sizeof(fdattr) - 1;
++
++	return len >= n && !memcmp(p, fdattr, n) && (len == n || p[n] == '=');
++}
++
++/* s64: whether options name an hfs-only option (hfs_fdattr in any form).
++ * v9fs_mount refuses it on a stock (non-hfs) version, where 9p would ignore
++ * it silently.
++ */
++bool v9fs_hfs_only_option(const char *options)
++{
++	const char *p = options;
++	size_t len;
++
++	while (p && *p) {
++		len = strcspn(p, ",");
++		if (hfs_fdattr_token(p, len))
++			return true;
++		p = p[len] ? p + len + 1 : NULL;
++	}
++	return false;
++}
++
 +/* hfs implements exactly the stock cache=mmap contract, so a mount must ask
 + * for exactly that (zq3-r7 R7-1, g64).
 + *
@@ -3400,18 +3450,29 @@ new file mode 100644
 + * hfs_show_options reports it. A missing or repeated cache=, any other mode
 + * and the legacy selectors (loose, fscache, mmap, cachetag=) are refused with
 + * EINVAL, the errno v9fs uses for an unknown cache mode.
++ *
++ * s64: the same loop parses "hfs_fdattr" into *fd_attr (described
++ * GETATTR/SETATTR, see hfs_session.fd_attr). It is explicit configuration,
++ * not negotiation: the lab sets it only with an s64 host and forwarder. A
++ * repeated hfs_fdattr or any "hfs_fdattr=" value is EINVAL.
 + */
-+static int hfs_cache_option(const char *options)
++static int hfs_cache_option(const char *options, bool *fd_attr)
 +{
 +	static const char wanted[] = "cache=mmap";
 +	const char *p = options;
 +	unsigned int found = 0;
 +	size_t len;
 +
++	*fd_attr = false;
 +	while (p && *p) {
 +		len = strcspn(p, ",");
 +		if (len == sizeof(wanted) - 1 && !memcmp(p, wanted, len))
 +			found++;
++		else if (len == sizeof("hfs_fdattr") - 1 && hfs_fdattr_token(p, len) &&
++			 !*fd_attr)
++			*fd_attr = true; /* exactly "hfs_fdattr", the first time */
++		else if (hfs_fdattr_token(p, len))
++			return -EINVAL;
 +		else if ((len >= 6 && !memcmp(p, "cache=", 6)) ||
 +			 (len == 5 && !memcmp(p, "loose", 5)) ||
 +			 (len == 7 && !memcmp(p, "fscache", 7)) ||
@@ -3421,6 +3482,16 @@ new file mode 100644
 +		p = p[len] ? p + len + 1 : NULL;
 +	}
 +	return found == 1 ? 0 : -EINVAL;
++}
++
++/* The mount's own options (hfs_cache_option), with one line on refusal. */
++static int hfs_mount_options(const char *options, bool *fd_attr)
++{
++	int err = hfs_cache_option(options, fd_attr);
++
++	if (err)
++		pr_warn_ratelimited("9p-hfs: mount refused: exactly one cache=mmap is required, hfs_fdattr at most once and without a value\n");
++	return err;
 +}
 +
 +static int hfs_enrollment_validate(struct hfs_enrollment *enrollment)
@@ -3808,16 +3879,15 @@ new file mode 100644
 +	struct hfs_session *session;
 +	struct dentry *root;
 +	unsigned long irqflags;
++	bool fd_attr;
 +	int err;
 +
 +	if (current_user_ns() != &init_user_ns || flags & SB_POSIXACL)
 +		return ERR_PTR(-EOPNOTSUPP);
-+	/* Before enrollment, so a refused cache mode consumes no identity. */
-+	err = hfs_cache_option(options);
-+	if (err) {
-+		pr_warn_ratelimited("9p-hfs: mount refused: exactly one cache=mmap is required\n");
++	/* Before enrollment, so a refused option consumes no identity. */
++	err = hfs_mount_options(options, &fd_attr);
++	if (err)
 +		return ERR_PTR(err);
-+	}
 +	mutex_lock(&hfs_provider_lock);
 +	if (!hfs_provider || !try_module_get(hfs_provider->owner)) {
 +		mutex_unlock(&hfs_provider_lock);
@@ -3829,6 +3899,7 @@ new file mode 100644
 +		mutex_unlock(&hfs_provider_lock);
 +		return ERR_PTR(-ENOMEM);
 +	}
++	session->fd_attr = fd_attr;
 +	session->control = alloc_workqueue("9p-hfs-control", WQ_MEM_RECLAIM, 2);
 +	err = session->control ? hfs_mount_enroll(session, device, &hello) : -ENOMEM;
 +	if (!err)
@@ -4298,7 +4369,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1396 @@
+@@ -0,0 +1,1691 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -4755,6 +4826,15 @@ new file mode 100644
 +	}
 +}
 +
++/* No dentry outlives a walk: every name walk does a fresh LOOKUP, so the path
++ * grant a GETATTR or SETATTR sends was issued inside the same syscall.
++ * s64: the Stale fallback in hfs_getattr/hfs_setattr relies on this
++ * returning 0 (no dentry outlives a walk); caching dentries requires limiting
++ * that fallback to fd callers first. Otherwise a name walk could reuse a
++ * dentry whose name was renamed away long ago, and the fallback would act on
++ * an object the caller can no longer name instead of the VFS relooking it up
++ * (LOOKUP_REVAL).
++ */
 +static int hfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 +{
 +	return flags & LOOKUP_RCU ? -ECHILD : 0;
@@ -5017,7 +5097,7 @@ new file mode 100644
 +			    struct inode **inodep)
 +{
 +	struct inode *inode;
-+	int err = hfs_reply_cap(HFS_S(dir), result, "DESCRIPTION", &description->cap);
++	int err = hfs_description_publish(HFS_S(dir), result, description);
 +
 +	if (!err)
 +		err = hfs_reply_cap(HFS_S(dir), result, "PATH", capp);
@@ -5309,9 +5389,159 @@ new file mode 100644
 +	return err;
 +}
 +
-+static int hfs_getattr_once(const struct path *path)
++/* s64: GETATTR and SETATTR through the open file description.
++ *
++ * The VFS hands ->getattr only the path, and fchmod, fchown and futimens call
++ * notify_change without ATTR_FILE, so for those the guest finds an open
++ * DESCRIPTION of the same object itself (docs/design/s64-fd-attr.md):
++ * 1. ATTR_FILE (no ATTR_SIZE) with hfs_fdattr: the file's own description;
++ * 2. an unlinked inode (i_nlink 0) with hfs_fdattr: a borrowed description
++ *    at once, since the path form would be Stale anyway;
++ * 3. otherwise the path form, and after a host Stale (not a failed
++ *    transport or a blocked session) with hfs_fdattr, borrowed descriptions.
++ * Step 3 is safe because hfs_d_revalidate keeps no dentry across walks.
++ * Without hfs_fdattr only the original path shapes are sent.
++ */
++enum hfs_attr_authority {
++	HFS_ATTR_PATH,		/* {object} / {attributes, object} */
++	HFS_ATTR_FILE,		/* ATTR_FILE's own description */
++	HFS_ATTR_BORROWED,	/* an untried listed description (hfs_borrow) */
++	HFS_ATTR_LAST,		/* the description the last borrow used again */
++};
++
++/* s64: borrowed descriptions tried per syscall; bounds the walk. */
++#define HFS_FD_ATTR_TRIES 8
++
++/* Tokens of descriptions already sent in this syscall: a refused (closing)
++ * one is never retried, so the walk reaches the caller's own live one.
++ */
++struct hfs_borrow {
++	u8 tried[HFS_FD_ATTR_TRIES][32];
++	u32 count;
++};
++
++static bool hfs_borrow_tried(const struct hfs_borrow *borrow, const u8 *token)
 +{
-+	struct inode *inode = d_inode(path->dentry);
++	u32 i;
++
++	for (i = 0; i < borrow->count; i++)
++		if (!memcmp(borrow->tried[i], token, 32))
++			return true;
++	return false;
++}
++
++/* s64: append "description":<cap>, for a listed description of inode's
++ * object: with last, the one borrow used last; otherwise one this syscall
++ * has not tried yet, whose token is remembered. Returns 0 or -HFS_ENODESC.
++ * The cap bytes are copied under session->lock: hfs_description_bind
++ * publishes description->cap there and hfs_description_discard unlinks the
++ * description there before it frees the cap, so a listed cap is live while
++ * the lock is held. args is preallocated (hfs_args_init): no allocation.
++ */
++static int hfs_args_listed_description(struct hfs_buf *args, struct inode *inode,
++				       struct hfs_borrow *borrow, bool last)
++{
++	struct hfs_session *session = HFS_S(inode);
++	const struct hfs_cap *object = HFS_I(inode)->object;
++	struct hfs_description *description;
++	int err = -HFS_ENODESC;
++
++	if (!object || (last ? !borrow->count : borrow->count == HFS_FD_ATTR_TRIES))
++		return err;
++	mutex_lock(&session->lock);
++	list_for_each_entry(description, &session->descriptions, list) {
++		const struct hfs_cap *cap = description->cap;
++
++		if (!cap || !uuid_equal(&cap->home, &object->home) ||
++		    !uuid_equal(&cap->allocation, &object->allocation))
++			continue;
++		if (last ? memcmp(borrow->tried[borrow->count - 1], cap->token, 32) :
++		    hfs_borrow_tried(borrow, cap->token))
++			continue;
++		if (!last)
++			memcpy(borrow->tried[borrow->count++], cap->token, 32);
++		hfs_buf_literal(args, "\"description\":");
++		hfs_cap_write(args, cap);
++		hfs_buf_literal(args, ",");
++		err = 0;
++		break;
++	}
++	mutex_unlock(&session->lock);
++	return err;
++}
++
++/* s64: the optional "description":<cap>, key of a GETATTR/SETATTR. Sorted
++ * keys: it follows "attributes" and precedes "object". own is ATTR_FILE's
++ * description (HFS_ATTR_FILE only), which the caller holds open.
++ */
++static int hfs_args_description(struct hfs_buf *args, struct inode *inode,
++				enum hfs_attr_authority authority,
++				struct hfs_borrow *borrow,
++				const struct hfs_description *own)
++{
++	switch (authority) {
++	case HFS_ATTR_PATH:
++		return 0;
++	case HFS_ATTR_FILE:
++		hfs_buf_literal(args, "\"description\":");
++		hfs_cap_write(args, own ? own->cap : NULL);
++		hfs_buf_literal(args, ",");
++		return 0;
++	case HFS_ATTR_BORROWED:
++		return hfs_args_listed_description(args, inode, borrow, false);
++	default:
++		return hfs_args_listed_description(args, inode, borrow, true);
++	}
++}
++
++/* s64: whether a path-form result may fall back to borrowed descriptions: a
++ * host Stale on an hfs_fdattr mount whose transport works and which is not
++ * blocked (those -ESTALE answers are the session's, not the path's).
++ */
++static bool hfs_fd_attr_fallback(struct hfs_session *session, bool fd_attr, int err)
++{
++	return err == -ESTALE && fd_attr && !READ_ONCE(session->transport_failed) &&
++	       !READ_ONCE(session->blocked);
++}
++
++/* s64: whether a described call's error only says "this description is
++ * dead" (released grant -EACCES, gone or mismatched handle -ESTALE), so the
++ * walk tries the next one; never on a failed transport or blocked session.
++ */
++static bool hfs_fd_attr_dead(struct hfs_session *session, int err)
++{
++	return (err == -EACCES || err == -ESTALE) &&
++	       !READ_ONCE(session->transport_failed) && !READ_ONCE(session->blocked);
++}
++
++/* s64: the syscall's answer at the end of a borrowed walk. 0 and real
++ * failures are returned as they are. -HFS_ENODESC (nothing open is left to
++ * try) is fallback, the path form's -ESTALE. -EPROTO/-EINVAL on a minor-0/1
++ * session means an old forwarder or host refused the shape (no ALLOCATE, so
++ * nothing was admitted): hfs_fdattr is cleared for the session and the path
++ * error returned. On a controlled session the error is returned as it is.
++ */
++static int hfs_fd_attr_result(struct hfs_session *session, int err, int fallback)
++{
++	if (err == -HFS_ENODESC)
++		return fallback;
++	if ((err == -EPROTO || err == -EINVAL) && session->bridge_minor < 2) {
++		if (xchg(&session->fd_attr, false))
++			pr_warn_ratelimited("9p-hfs: session %pUb refused a described GETATTR/SETATTR (%d); hfs_fdattr off\n",
++					    &session->enrollment.session, err);
++		return fallback;
++	}
++	return err;
++}
++
++/* s64: one GETATTR through the path (HFS_ATTR_PATH), an untried borrowed
++ * description (HFS_ATTR_BORROWED) or the last borrowed one (HFS_ATTR_LAST).
++ * Key order is canonical: "description" < "object".
++ */
++static int hfs_getattr_send(struct dentry *dentry, enum hfs_attr_authority authority,
++			    struct hfs_borrow *borrow)
++{
++	struct inode *inode = d_inode(dentry);
 +	struct hfs_cred *cred;
 +	struct hfs_buf args;
 +	struct hfs_json *result = NULL;
@@ -5322,8 +5552,12 @@ new file mode 100644
 +		return err;
 +	err = hfs_args_init(&args);
 +	if (!err) {
-+		hfs_buf_literal(&args, "{\"object\":");
-+		hfs_dcap_write(&args, path->dentry);
++		hfs_buf_literal(&args, "{");
++		err = hfs_args_description(&args, inode, authority, borrow, NULL);
++	}
++	if (!err) {
++		hfs_buf_literal(&args, "\"object\":");
++		hfs_dcap_write(&args, dentry);
 +		hfs_buf_literal(&args, "}");
 +		err = hfs_call(HFS_S(inode), "GETATTR", &args, cred, false, &result);
 +	}
@@ -5334,6 +5568,37 @@ new file mode 100644
 +	hfs_buf_free(&args);
 +	hfs_end(inode, cred, cookie);
 +	return err;
++}
++
++/* s64: try untried descriptions until one answers. A described GETATTR has
++ * no owner rule, so -EACCES and -ESTALE only mean a dead description.
++ * Bounded: every round borrows a new token or ends with -HFS_ENODESC.
++ */
++static int hfs_getattr_borrowed(struct dentry *dentry, int fallback)
++{
++	struct hfs_session *session = HFS_S(d_inode(dentry));
++	struct hfs_borrow borrow = {};
++	int err;
++
++	do {
++		err = hfs_getattr_send(dentry, HFS_ATTR_BORROWED, &borrow);
++	} while (hfs_fd_attr_dead(session, err));
++	return hfs_fd_attr_result(session, err, fallback);
++}
++
++static int hfs_getattr_once(const struct path *path)
++{
++	struct inode *inode = d_inode(path->dentry);
++	struct hfs_session *session = HFS_S(inode);
++	bool fd_attr = READ_ONCE(session->fd_attr);
++	int err;
++
++	if (fd_attr && !inode->i_nlink)
++		return hfs_getattr_borrowed(path->dentry, -ESTALE);
++	err = hfs_getattr_send(path->dentry, HFS_ATTR_PATH, NULL);
++	if (!hfs_fd_attr_fallback(session, fd_attr, err))
++		return err;
++	return hfs_getattr_borrowed(path->dentry, err);
 +}
 +
 +static int hfs_getattr(struct user_namespace *ns, const struct path *path,
@@ -5467,10 +5732,16 @@ new file mode 100644
 +	hfs_buf_literal(args, "}}");
 +}
 +
-+static void hfs_setattr_args(struct hfs_buf *args, struct dentry *dentry,
-+			     struct iattr *attr)
++/* SETATTR args in canonical key order: "attributes", then (s64, described
++ * forms only) "description", then "object". Returns 0 or -HFS_ENODESC when
++ * a borrowed description was asked for and none is left.
++ */
++static int hfs_setattr_args(struct hfs_buf *args, struct dentry *dentry,
++			    struct iattr *attr, enum hfs_attr_authority authority,
++			    struct hfs_borrow *borrow)
 +{
 +	unsigned int valid = attr->ia_valid;
++	int err;
 +
 +	hfs_buf_literal(args, "{\"attributes\":{");
 +	hfs_optional_time(args, attr, true);
@@ -5491,18 +5762,23 @@ new file mode 100644
 +		hfs_buf_printf(args, "%u", from_kuid(&init_user_ns, attr->ia_uid));
 +	else
 +		hfs_buf_literal(args, "null");
-+	hfs_buf_literal(args, "},\"object\":");
++	hfs_buf_literal(args, "},");
++	err = hfs_args_description(args, d_inode(dentry), authority, borrow,
++				   valid & ATTR_FILE ? attr->ia_file->private_data : NULL);
++	if (err)
++		return err;
++	hfs_buf_literal(args, "\"object\":");
 +	hfs_dcap_write(args, dentry);
 +	hfs_buf_literal(args, "}");
++	return 0;
 +}
 +
-+/* setattr_prepare checks the request as the VFS built it, derived MODE
-+ * included (vf4 review 1), so a chown of a setuid/setgid file still needs
-+ * inode_owner_or_capable (CAP_CHOWN alone gives EPERM, as in Linux); only
-+ * then is the request reduced to what hfs_setattr_sent keeps.
++/* One TRUNCATE (ATTR_SIZE: ATTR_FILE's description, else null; authority
++ * unused) or SETATTR with the given authority (s64).
 + */
-+static int hfs_setattr(struct user_namespace *ns, struct dentry *dentry,
-+		       struct iattr *attr)
++static int hfs_setattr_send(struct dentry *dentry, struct iattr *attr,
++			    enum hfs_attr_authority authority,
++			    struct hfs_borrow *borrow)
 +{
 +	struct inode *inode = d_inode(dentry);
 +	struct hfs_cred *cred;
@@ -5510,6 +5786,112 @@ new file mode 100644
 +	struct hfs_json *result = NULL;
 +	struct hfs_description *description = NULL;
 +	void *cookie;
++	bool truncate = attr->ia_valid & ATTR_SIZE;
++	int err;
++
++	if (attr->ia_valid & ATTR_FILE)
++		description = attr->ia_file->private_data;
++	err = hfs_begin(inode, true, &cred, &cookie);
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (err)
++		goto out;
++	if (truncate)
++		hfs_truncate_args(&args, dentry, attr, description);
++	else
++		err = hfs_setattr_args(&args, dentry, attr, authority, borrow);
++	if (!err)
++		err = hfs_call(HFS_S(inode), truncate ? "TRUNCATE" : "SETATTR",
++			       &args, cred, false, &result);
++	if (!err)
++		err = hfs_attr_install(inode, result,
++				       hfs_json_field(result, 0, "attributes"));
++	hfs_buf_free(&args);
++out:
++	hfs_json_free(result);
++	hfs_end(inode, cred, cookie);
++	return err;
++}
++
++/* s64: the errno the path form would give for a described SETATTR the host
++ * refused with Permission (err) by its owner rule. With the attributes the
++ * probe just installed, setattr_prepare answers -EPERM where Linux would on
++ * a local filesystem (mode, uid, gid or explicit times by a non-owner
++ * without the capability); otherwise the host's -EACCES stands (current
++ * times without write permission). setattr_prepare runs no host call.
++ */
++static int hfs_setattr_refusal(struct user_namespace *ns, struct dentry *dentry,
++			       struct iattr *attr, int err)
++{
++	int owner = setattr_prepare(ns, dentry, attr);
++
++	return owner ? owner : err;
++}
++
++/* s64: SETATTR through untried descriptions. After -EACCES, a GETATTR
++ * through the same description (HFS_ATTR_LAST, not re-borrowed) tells a
++ * dead description (-EACCES/-ESTALE: try the next) from an owner refusal
++ * (it answers: return the refusal, never -ESTALE). A probe whose attributes
++ * were not installed because the view target moved still answered. The
++ * fd caller's own description is always listed (it holds the file), so it
++ * always gets its real refusal.
++ */
++static int hfs_setattr_borrowed(struct user_namespace *ns, struct dentry *dentry,
++				struct iattr *attr, int fallback)
++{
++	struct hfs_session *session = HFS_S(d_inode(dentry));
++	struct hfs_borrow borrow = {};
++	int err, probe;
++
++	for (;;) {
++		err = hfs_setattr_send(dentry, attr, HFS_ATTR_BORROWED, &borrow);
++		if (!hfs_fd_attr_dead(session, err))
++			break;
++		if (err == -ESTALE)
++			continue;
++		probe = hfs_getattr_send(dentry, HFS_ATTR_LAST, &borrow);
++		if (!probe || probe == -HFS_ETARGET_MOVED)
++			return hfs_setattr_refusal(ns, dentry, attr, err);
++		if (probe != -HFS_ENODESC && !hfs_fd_attr_dead(session, probe))
++			return probe;
++	}
++	return hfs_fd_attr_result(session, err, fallback);
++}
++
++/* s64: a SETATTR without ATTR_SIZE: steps 1 to 3 of the described forms
++ * (see enum hfs_attr_authority). With ATTR_FILE its own description's
++ * Permission is a real refusal: the caller holds that file.
++ */
++static int hfs_setattr_attributes(struct user_namespace *ns, struct dentry *dentry,
++				  struct iattr *attr)
++{
++	struct inode *inode = d_inode(dentry);
++	struct hfs_session *session = HFS_S(inode);
++	bool fd_attr = READ_ONCE(session->fd_attr);
++	int err;
++
++	if (fd_attr && (attr->ia_valid & ATTR_FILE))
++		return hfs_setattr_send(dentry, attr, HFS_ATTR_FILE, NULL);
++	if (fd_attr && !inode->i_nlink)
++		return hfs_setattr_borrowed(ns, dentry, attr, -ESTALE);
++	err = hfs_setattr_send(dentry, attr, HFS_ATTR_PATH, NULL);
++	if (!hfs_fd_attr_fallback(session, fd_attr, err))
++		return err;
++	return hfs_setattr_borrowed(ns, dentry, attr, err);
++}
++
++/* setattr_prepare checks the request as the VFS built it, derived MODE
++ * included (vf4 review 1), so a chown of a setuid/setgid file still needs
++ * inode_owner_or_capable (CAP_CHOWN alone gives EPERM, as in Linux); only
++ * then is the request reduced to what hfs_setattr_sent keeps. The guest's
++ * checks run first on the cached attributes; the host's are authoritative.
++ * ATTR_SIZE is TRUNCATE (ftruncate's own description, r64); everything else
++ * is SETATTR, described or not (s64, hfs_setattr_attributes).
++ */
++static int hfs_setattr(struct user_namespace *ns, struct dentry *dentry,
++		       struct iattr *attr)
++{
 +	unsigned int sent = hfs_setattr_sent(attr);
 +	bool truncate = sent & ATTR_SIZE;
 +	int err;
@@ -5524,28 +5906,9 @@ new file mode 100644
 +	attr->ia_valid = sent;
 +	if (truncate && attr->ia_size < 0)
 +		return -EINVAL;
-+	if (attr->ia_valid & ATTR_FILE)
-+		description = attr->ia_file->private_data;
-+	err = hfs_begin(inode, true, &cred, &cookie);
-+	if (err)
-+		return err;
-+	err = hfs_args_init(&args);
-+	if (err)
-+		goto out;
 +	if (truncate)
-+		hfs_truncate_args(&args, dentry, attr, description);
-+	else
-+		hfs_setattr_args(&args, dentry, attr);
-+	err = hfs_call(HFS_S(inode), truncate ? "TRUNCATE" : "SETATTR", &args,
-+		       cred, false, &result);
-+	if (!err)
-+		err = hfs_attr_install(inode, result,
-+				       hfs_json_field(result, 0, "attributes"));
-+	hfs_buf_free(&args);
-+out:
-+	hfs_json_free(result);
-+	hfs_end(inode, cred, cookie);
-+	return err;
++		return hfs_setattr_send(dentry, attr, HFS_ATTR_PATH, NULL);
++	return hfs_setattr_attributes(ns, dentry, attr);
 +}
 +
 +static const char *hfs_get_link(struct dentry *dentry, struct inode *inode,
@@ -5650,12 +6013,15 @@ new file mode 100644
 + * mount already refused any version other than the provider's exact minor.
 + * For the zq3 mount this gives
 + * ",cache=mmap,msize=65536,trans=virtio,version=9P2000.L.hfs1.4".
++ * s64: a mount with hfs_fdattr (still in effect) prints it after cache=mmap.
 + */
 +static int hfs_show_options(struct seq_file *m, struct dentry *root)
 +{
 +	struct hfs_session *session = root->d_sb->s_fs_info;
 +
 +	seq_puts(m, ",cache=mmap");
++	if (session && READ_ONCE(session->fd_attr))
++		seq_puts(m, ",hfs_fdattr");
 +	if (!session || !session->client)
 +		return 0;
 +	return p9_show_client_options(m, session->client);
@@ -5699,7 +6065,7 @@ diff --git a/fs/9p/hfs_file.c b/fs/9p/hfs_file.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_file.c
-@@ -0,0 +1,645 @@
+@@ -0,0 +1,665 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Description-bound retained-9p I/O. Advisory locks stay in this kernel mount. */
 +#include <linux/file.h>
@@ -5778,13 +6144,33 @@ new file mode 100644
 +	kfree(description);
 +}
 +
++/* Parse an OPEN or CREATE reply's DESCRIPTION grant into the listed
++ * description. s64: published under session->lock, where hfs_inode.c's
++ * borrowed GETATTR/SETATTR walk reads listed caps; hfs_description_discard
++ * unlinks before it frees, so a cap seen under the lock stays live.
++ */
++int hfs_description_publish(struct hfs_session *session,
++			    const struct hfs_json *result,
++			    struct hfs_description *description)
++{
++	struct hfs_cap *cap;
++	int err = hfs_reply_cap(session, result, "DESCRIPTION", &cap);
++
++	if (err)
++		return err;
++	mutex_lock(&session->lock);
++	description->cap = cap;
++	mutex_unlock(&session->lock);
++	return 0;
++}
++
 +static int hfs_description_bind(struct inode *inode, struct file *file,
 +				struct hfs_json *result, struct hfs_cred *issuer,
 +				struct hfs_description *description)
 +{
 +	int err;
 +
-+	err = hfs_reply_cap(HFS_S(inode), result, "DESCRIPTION", &description->cap);
++	err = hfs_description_publish(HFS_S(inode), result, description);
 +	if (err)
 +		return err;
 +	if (!uuid_equal(&description->cap->home, &HFS_I(inode)->object->home) ||

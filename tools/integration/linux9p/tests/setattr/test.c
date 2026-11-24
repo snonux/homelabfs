@@ -37,10 +37,52 @@ static unsigned int from_kgid(struct user_namespace *ns, kgid_t gid) { return gi
 #define spin_unlock(x) ((void)(x))
 #include "cap.inc"
 
-struct hfs_session { int unused; };
+/* s64: the list, lock and flag primitives the described GETATTR/SETATTR walk
+ * uses. The mutex fails the test on recursion; hfs_call checks it is free.
+ */
+struct list_head { struct list_head *next, *prev; };
+static void INIT_LIST_HEAD(struct list_head *list) { list->next = list->prev = list; }
+static void list_add_tail(struct list_head *entry, struct list_head *head)
+{
+	entry->prev = head->prev;
+	entry->next = head;
+	head->prev->next = entry;
+	head->prev = entry;
+}
+static void list_del(struct list_head *entry)
+{
+	entry->prev->next = entry->next;
+	entry->next->prev = entry->prev;
+}
+#define container_of(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
+#define list_for_each_entry(pos, head, member)                                  \
+	for (pos = container_of((head)->next, typeof(*pos), member);           \
+	     &pos->member != (head);                                           \
+	     pos = container_of(pos->member.next, typeof(*pos), member))
+struct mutex { bool held; };
+static void mutex_lock(struct mutex *lock) { CHECK(!lock->held); lock->held = true; }
+static void mutex_unlock(struct mutex *lock) { CHECK(lock->held); lock->held = false; }
+#define READ_ONCE(x) (x)
+#define xchg(ptr, value) __atomic_exchange_n((ptr), (value), __ATOMIC_SEQ_CST)
+static bool uuid_equal(const uuid_t *a, const uuid_t *b) { return !memcmp(a, b, sizeof(*a)); }
+static unsigned int warnings;
+#define pr_warn_ratelimited(...) ((void)warnings++)
+
+struct hfs_session {
+	struct mutex lock;
+	struct list_head descriptions;
+	struct { uuid_t session; } enrollment;
+	u16 bridge_minor;
+	bool fd_attr, transport_failed, blocked;
+};
 struct hfs_cred { int unused; };
 struct hfs_inode { struct hfs_cap *object; };
-struct inode { struct hfs_inode hfs; umode_t i_mode; struct hfs_session session; };
+struct inode {
+	struct hfs_inode hfs;
+	umode_t i_mode;
+	unsigned int i_nlink;
+	struct hfs_session session;
+};
 #define HFS_I(inode) (&(inode)->hfs)
 #define HFS_S(inode) (&(inode)->session)
 struct dentry;
@@ -72,10 +114,11 @@ static void d_set_d_op(struct dentry *dentry, const struct dentry_operations *op
 #define WARN_ON_ONCE(condition) CHECK(!(condition))
 #include "dentry.inc"
 
-struct hfs_description { struct hfs_cap *cap; };
+struct hfs_description { struct list_head list; struct hfs_cap *cap; };
+struct path { struct dentry *dentry; };
 struct file {
 	void *private_data;
-	struct { struct dentry *dentry; } f_path;
+	struct path f_path;
 };
 struct iattr {
 	unsigned int ia_valid;
@@ -87,33 +130,44 @@ struct iattr {
 	struct file *ia_file;
 };
 
-/* Substitutes: what hfs_setattr asked of the VFS and the host. */
+/* Substitutes: what hfs_setattr asked of the VFS and the host. s64: every
+ * CALL is logged (log[i], ops[i]) and may get a scripted result (errs[i]
+ * for i < scripted, else call_err) and a scripted install result.
+ */
+#define MAX_CALLS 16
 static struct {
-	unsigned int prepare, begin, end, install;
+	unsigned int prepare, begin, reads, end, install, calls, scripted;
 	unsigned int prepared_valid;
 	int call_err;
 	bool not_owner; /* setattr_prepare's inode_owner_or_capable fails */
+	bool owner_lost; /* s64: it fails from the second setattr_prepare on */
 	char opcode[16];
 	char args[4096];
+	int errs[MAX_CALLS], install_errs[MAX_CALLS];
+	char ops[MAX_CALLS][16];
+	char log[MAX_CALLS][4096];
 } seen;
 static int setattr_prepare(struct user_namespace *ns, struct dentry *dentry,
 			   struct iattr *attr)
 {
+	bool not_owner = seen.not_owner || (seen.owner_lost && seen.prepare);
+
 	seen.prepare++;
 	seen.prepared_valid = attr->ia_valid;
 	/* fs/attr.c: ATTR_MODE needs inode_owner_or_capable unless ATTR_FORCE. */
-	if (seen.not_owner && (attr->ia_valid & ATTR_MODE) &&
+	if (not_owner && (attr->ia_valid & ATTR_MODE) &&
 	    !(attr->ia_valid & ATTR_FORCE))
 		return -EPERM;
 	return 0;
 }
+/* GETATTR (s64 fallback and probe) begins as a read, SETATTR as a mutation. */
 static int hfs_begin(struct inode *inode, bool mutation, struct hfs_cred **cred,
 		     void **cookie)
 {
 	static struct hfs_cred issuer;
 
-	CHECK(mutation);
 	seen.begin++;
+	seen.reads += !mutation;
 	*cred = &issuer;
 	*cookie = inode;
 	return 0;
@@ -128,22 +182,30 @@ static int hfs_call(struct hfs_session *session, const char *opcode,
 		    bool control, struct hfs_json **reply)
 {
 	static const char body[] = "{\"attributes\":{}}";
+	unsigned int i = seen.calls++;
 
+	/* s64: a listed cap is copied under session->lock, never sent under it. */
+	CHECK(!session->lock.held);
 	CHECK(!control && !args->error && args->len < sizeof(seen.args));
+	CHECK(i < MAX_CALLS);
 	snprintf(seen.opcode, sizeof(seen.opcode), "%s", opcode);
 	memcpy(seen.args, args->data, args->len);
 	seen.args[args->len] = 0;
+	memcpy(seen.ops[i], seen.opcode, sizeof(seen.opcode));
+	memcpy(seen.log[i], seen.args, args->len + 1);
 	CHECK(!hfs_json_parse(body, sizeof(body) - 1, reply));
-	return seen.call_err;
+	return i < seen.scripted ? seen.errs[i] : seen.call_err;
 }
 static int hfs_attr_install(struct inode *inode, const struct hfs_json *json,
 			    int token)
 {
 	CHECK(token > 0);
 	seen.install++;
-	return 0;
+	return seen.calls && seen.calls <= MAX_CALLS ? seen.install_errs[seen.calls - 1] : 0;
 }
+#include "fdattr.inc"
 #include "setattr.inc"
 #include "model.inc"
 #include "links.inc"
 #include "cases.inc"
+#include "fdattr_cases.inc"

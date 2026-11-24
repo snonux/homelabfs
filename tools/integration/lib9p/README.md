@@ -607,6 +607,22 @@ and checks ERROR 5 on that FETCH and the next one.
 
 A native rebuild must pick this source up before any lab run can show it.
 
+## Described GETATTR and SETATTR (`s64`)
+
+GETATTR and SETATTR may carry the open file's DESCRIPTION, so fstat,
+fchmod, fchown and futimens work after rename or unlink
+([design](../../../docs/design/s64-fd-attr.md)). `_args` (split into
+`_args_opcode_keys`, `_args_keys`, `_args_value` and the count check) routes the shapes
+`{description, object}` and `{attributes, description, object}` in addition
+to the original ones. The forwarder only routes: the host's closed parser
+checks that the description is a nonnull DESCRIPTION capability of the
+object. A `description` on any other opcode without one in its key set
+still fails the exact field count. A pre-s64 forwarder refuses the described
+shapes with EINVAL before anything reaches the host. The guest sends them
+only with the `hfs_fdattr` mount option. `described_attr_args_test` in
+`backend_test.c` covers both directions. A native rebuild must pick this
+source up before any lab run can show it.
+
 ## Controlled terminal owner (`614`)
 
 Explicit features32767 adds SESSION_RETIRE and preserves the exact16383 and

@@ -18,17 +18,24 @@ static struct hfs_cap *test_cap(const char *json)
 }
 
 /* A regular file (or another type) with its object grant and an open
- * description, as after a LOOKUP and an OPEN.
+ * description, as after a LOOKUP and an OPEN. s64: the description is listed
+ * on the session (hfs_description_prepare) with token byte 2; the mount has
+ * no hfs_fdattr unless a case sets session.fd_attr.
  */
 static void fixture_init(struct fixture *f, umode_t mode)
 {
 	memset(f, 0, sizeof(*f));
 	memset(&seen, 0, sizeof(seen));
+	warnings = 0;
 	f->inode.i_mode = mode;
+	f->inode.i_nlink = 1;
 	f->inode.hfs.object = test_cap("{\"o\":1}");
 	f->dentry.d_inode = &f->inode;
 	f->description.cap = test_cap("{\"d\":2}");
+	f->description.cap->token[0] = 2;
 	f->file.private_data = &f->description;
+	INIT_LIST_HEAD(&f->inode.session.descriptions);
+	list_add_tail(&f->description.list, &f->inode.session.descriptions);
 }
 
 static void fixture_free(struct fixture *f)

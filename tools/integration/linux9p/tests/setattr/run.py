@@ -27,6 +27,12 @@ The source check requires that hfs_lookup is called only by hfs_atomic_open
 tg4: model.inc adds vfs_utimes (fs/utimes.c); utimensat(NULL),
 futimens(fd, NULL) and both UTIME_NOW carry ATTR_TOUCH, which
 hfs_setattr_supported refused before any CALL until tg4.
+
+s64: fdattr.inc adds the described GETATTR/SETATTR helpers and
+hfs_getattr_once verbatim; fdattr_cases.inc checks every CALL's bytes for
+fstat, fchmod, fchown and futimens after rename/unlink, with and without the
+hfs_fdattr mount option (test.c substitutes the session's description list,
+lock and flags).
 """
 import argparse
 import hashlib
@@ -76,6 +82,22 @@ def check_attach_callers(inode):
         raise SystemExit('FAIL: hfs_lookup called outside the in-lookup open and hfs_relookup')
 
 
+def fdattr(header, inode, build):
+    """s64: the described GETATTR/SETATTR helpers and the GETATTR path.
+
+    The authority enum, the borrow bound and record, the internal errnos and
+    every helper hfs_getattr_once and hfs_setattr_args call, verbatim."""
+    errnos = [re.search(r'^#define ' + name + r' .*$', header, re.M).group(0)
+              for name in ('HFS_ETARGET_MOVED', 'HFS_ENODESC')]
+    start = inode.index('enum hfs_attr_authority {')
+    end = inode.index('\n};\n', inode.index('struct hfs_borrow {')) + 4
+    return '\n'.join(errnos) + '\n' + inode[start:end] + ''.join(
+        build.function(inode, name) for name in (
+            'hfs_borrow_tried', 'hfs_args_listed_description', 'hfs_args_description',
+            'hfs_fd_attr_fallback', 'hfs_fd_attr_dead', 'hfs_fd_attr_result',
+            'hfs_getattr_send', 'hfs_getattr_borrowed', 'hfs_getattr_once'))
+
+
 def extract(source, output, build):
     """Write verbatim production definitions and return their source hashes."""
     texts = {name: (source / name).read_text()
@@ -93,12 +115,14 @@ def extract(source, output, build):
     dops = inode[start:inode.index('\n};\n', start) + 4]
     (output / 'dentry.inc').write_text(build.function(inode, 'hfs_dcap_write') + dops +
                                        build.function(inode, 'hfs_dentry_attach'))
+    (output / 'fdattr.inc').write_text(fdattr(header, inode, build))
     kill = re.search(r'^#define HFS_ATTR_KILL .*$', inode, re.M).group(0)
     (output / 'setattr.inc').write_text(kill + '\n' + ''.join(
         build.function(inode, name) for name in (
             'hfs_time_write', 'hfs_optional_time', 'hfs_setattr_sent',
             'hfs_setattr_supported', 'hfs_truncate_args', 'hfs_setattr_args',
-            'hfs_setattr')))
+            'hfs_setattr_send', 'hfs_setattr_refusal', 'hfs_setattr_borrowed',
+            'hfs_setattr_attributes', 'hfs_setattr')))
     (output / 'lookup.inc').write_text(''.join(build.function(inode, name) for name in (
         'hfs_lookup', 'hfs_relookup', 'hfs_create_exists', 'hfs_link')))
     return {name: hashlib.sha256(text.encode()).hexdigest() for name, text in texts.items()}

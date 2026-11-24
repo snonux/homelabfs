@@ -269,6 +269,8 @@ static void test_dentry_attach(void)
 	hfs_dops.d_release(&dentry);
 }
 
+static void test_fdattr(void); /* s64, fdattr_cases.inc */
+
 int main(void)
 {
 	test_chown_plain();
@@ -282,8 +284,10 @@ int main(void)
 	test_dentry_attach();
 	test_link_relookup();
 	test_create_exists();
+	test_fdattr();
 	printf("PASS: actual hfs_setattr kill bits (chown, truncate, remove_privs), "
-	       "utimensat(NULL)/UTIME_NOW touch, kept refusals, hfs_dentry_attach, hfs_link and EEXIST relookup; "
+	       "utimensat(NULL)/UTIME_NOW touch, kept refusals, hfs_dentry_attach, hfs_link and EEXIST relookup, "
+	       "s64 described GETATTR/SETATTR (hfs_fdattr gating, rename/unlink fallback, borrowed walk, owner refusal, old peer); "
 	       "no kernel/VM/runtime proof\n");
 	return 0;
 }
