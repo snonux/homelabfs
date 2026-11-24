@@ -25,7 +25,14 @@ typedef struct { unsigned long wakes; } wait_queue_head_t;
 struct wait_queue_entry { wait_queue_head_t *head; };
 struct list_head { struct list_head *next, *prev; };
 struct kref { atomic_int refcount; };
-struct address_space { int id; bool exiting; const struct address_space_operations *a_ops; };
+/* nrpages: wj4, hfs_view_unmark_idle_locked keeps a mark while it is not 0. */
+struct address_space { int id; bool exiting; const struct address_space_operations *a_ops; unsigned long nrpages; };
+/* wj4: hfs_inode.view_vmas, with the kernel's ordering of each operation. */
+typedef atomic_int atomic_t;
+#define atomic_inc(p) ((void)atomic_fetch_add((p), 1))
+#define atomic_read(p) atomic_load_explicit((p), memory_order_relaxed)
+#define atomic_read_acquire(p) atomic_load_explicit((p), memory_order_acquire)
+#define atomic_dec_return_release(p) (atomic_fetch_sub_explicit((p), 1, memory_order_release) - 1)
 typedef int gfp_t;
 struct page { bool locked, compound, anon, marker, uptodate, mapped, writeback, pinned, dirty; void *private; int refs; };
 struct folio { struct page page; struct address_space *mapping; };
@@ -90,13 +97,14 @@ static inline void folio_detach_private(struct folio *f) {
 /* i_lock, i_state and i_data, and hfs_inode's object and forget, serve the
  * ie4 forget-record checks (hfs_inode_get_fail, hfs_evict_inode; view
  * --pressure). A zeroed spinlock_t is an unlocked glibc mutex. view_mmapped
- * mirrors hfs.h (tj4: hfs_view_mmap_inode's mark). wj4: run.py's
+ * mirrors hfs.h (tj4: hfs_view_mmap_inode's mark), and so do (wj4)
+ * view_mmap_list and view_vmas, the mark's list and VMA count. wj4: run.py's
  * hfs_inode_layout_guard refuses a struct hfs_inode whose members differ
  * from fs/9p/hfs.h by name or order.
  */
 struct inode { struct address_space *i_mapping; int refs; spinlock_t i_lock; unsigned long i_state; struct address_space i_data; };
 struct hfs_forget;
-struct hfs_inode { struct list_head view_list; bool view_mmapped; struct inode inode; struct hfs_cap *object; struct hfs_forget *forget; };
+struct hfs_inode { struct list_head view_list; struct list_head view_mmap_list; atomic_t view_vmas; bool view_mmapped; struct inode inode; struct hfs_cap *object; struct hfs_forget *forget; };
 struct hfs_view;
 /* leave: hfs_mmap_end's provider exit (ie4, view --pressure). */
 struct hfs_provider {
@@ -147,6 +155,8 @@ static inline void hfs_session_abandon_queue(struct hfs_session *session) { (voi
 #define list_for_each_entry(p, h, member) \
    for (p = container_of((h)->next, __typeof__(*p), member); \
         &p->member != (h); p = container_of(p->member.next, __typeof__(*p), member))
+/* wj4: hfs_view_unmark_idle_locked uses it in both modes (it was --pressure only). */
+#define list_for_each_entry_safe(p,n,h,m) for(p=container_of((h)->next,__typeof__(*p),m),n=container_of(p->m.next,__typeof__(*p),m);&p->m!=(h);p=n,n=container_of(n->m.next,__typeof__(*n),m))
 #define mutex_init(p) assert(pthread_mutex_init(&(p)->native, NULL) == 0)
 #define mutex_lock(p) assert(pthread_mutex_lock(&(p)->native) == 0)
 #define mutex_unlock(p) assert(pthread_mutex_unlock(&(p)->native) == 0)

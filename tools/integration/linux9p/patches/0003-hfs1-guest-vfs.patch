@@ -112,7 +112,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,568 @@
+@@ -0,0 +1,576 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -540,11 +540,19 @@ new file mode 100644
 +struct hfs_inode {
 +	/* On view->mappings while registered (every hfs_inode_get inode; the
 +	 * STOP/recall inventory). tj4: view_mmapped, under view->lock, once
-+	 * hfs_mmap_file accepted a mapping of this inode, until it leaves the
-+	 * view (eviction): only such an inode can hold target-bound state, so
-+	 * only it counts in view->nr_mmapped and keeps the view non-cacheless.
++	 * hfs_mmap_file accepted a mapping of this inode: only such an inode
++	 * can hold target-bound state, so only it counts in view->nr_mmapped
++	 * and keeps the view non-cacheless. The mark is dropped, under
++	 * view->lock, when the inode leaves the view (eviction) or (wj4) once
++	 * no VMA of it remains (view_vmas == 0) and its page cache is empty
++	 * (hfs_view_unmark_idle_locked); view_mmap_list is its place on
++	 * view->mmapped while marked. view_vmas counts the VMAs carrying
++	 * hfs_mmap_ops: + 1 in hfs_view_mmap_inode (under view->lock, the only
++	 * 0 -> 1 step) and in vm_ops->open, - 1 in vm_ops->close.
 +	 */
 +	struct list_head view_list;
++	struct list_head view_mmap_list;
++	atomic_t view_vmas;
 +	bool view_mmapped;
 +	struct inode inode;
 +	struct hfs_cap *object;
@@ -4717,7 +4725,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1691 @@
+@@ -0,0 +1,1692 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -5100,6 +5108,7 @@ new file mode 100644
 +	if (!inode)
 +		return NULL;
 +	INIT_LIST_HEAD(&inode->view_list);
++	INIT_LIST_HEAD(&inode->view_mmap_list); /* wj4; view_vmas is 0 (kzalloc) */
 +	inode_init_once(&inode->inode);
 +	return &inode->inode;
 +}

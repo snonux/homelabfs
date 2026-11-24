@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 #define LIST_HEAD(name) struct list_head name={&(name),&(name)}
-#define list_for_each_entry_safe(p,n,h,m) for(p=container_of((h)->next,__typeof__(*p),m),n=container_of(p->m.next,__typeof__(*p),m);&p->m!=(h);p=n,n=container_of(n->m.next,__typeof__(*n),m))
 struct hfs_json;
 typedef unsigned int vm_fault_t;
 #define VM_FAULT_OOM 0x1U

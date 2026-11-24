@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,333 @@
+@@ -0,0 +1,342 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -554,6 +554,11 @@ new file mode 100644
 +	struct mutex transitions;
 +	wait_queue_head_t wait;
 +	struct list_head mappings;
++	/* wj4: the inodes with hfs_inode.view_mmapped (view_mmap_list), so
++	 * hfs_view_unmark_idle_locked visits nr_mmapped inodes, not every
++	 * registered one (up to HFS_IDENTITIES_MAX).
++	 */
++	struct list_head mmapped;
 +	struct list_head cache;
 +	struct list_head dirty;
 +	struct list_head observations;
@@ -625,10 +630,12 @@ new file mode 100644
 +	u32 active;
 +	/* Registered inodes (view->mappings): the STOP/recall inventory. */
 +	u32 nr_mappings;
-+	/* tj4: those of them that were ever mmapped (hfs_inode.view_mmapped).
-+	 * The xf4 cacheless test counts these, not nr_mappings: the mount root
-+	 * and every looked-up inode are registered without holding any
-+	 * target-bound state (hfs_view_cacheless_locked).
++	/* tj4: those of them that were mmapped (hfs_inode.view_mmapped; wj4:
++	 * and still have a VMA or a page-cache page, see
++	 * hfs_view_unmark_idle_locked). The xf4 cacheless test counts these,
++	 * not nr_mappings: the mount root and every looked-up inode are
++	 * registered without holding any target-bound state
++	 * (hfs_view_cacheless_locked).
 +	 */
 +	u32 nr_mmapped;
 +	u32 nr_cached;
@@ -735,6 +742,8 @@ new file mode 100644
 +int hfs_view_free(struct hfs_session *session);
 +int hfs_view_register_inode(struct inode *inode);
 +int hfs_view_mmap_inode(struct inode *inode);
++void hfs_view_vma_open(struct inode *inode);
++void hfs_view_vma_close(struct inode *inode);
 +void hfs_view_unregister_inode(struct inode *inode);
 +int hfs_view_bind_initial(struct hfs_view *view, const struct hfs_lease *lease);
 +int hfs_view_capture(struct hfs_view *view, struct hfs_view_stamp *stamp,
@@ -789,7 +798,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1557 @@
+@@ -0,0 +1,1645 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -902,6 +911,7 @@ new file mode 100644
 +	mutex_init(&view->transitions);
 +	init_waitqueue_head(&view->wait);
 +	INIT_LIST_HEAD(&view->mappings);
++	INIT_LIST_HEAD(&view->mmapped);
 +	INIT_LIST_HEAD(&view->cache);
 +	INIT_LIST_HEAD(&view->dirty);
 +	INIT_LIST_HEAD(&view->observations);
@@ -969,11 +979,17 @@ new file mode 100644
 +}
 +
 +/* Register inode with its session's view. tj4: mmapped also marks it as
-+ * mapped (view_mmapped, view->nr_mmapped) in the same critical section, so
-+ * a concurrent hfs_view_advance either sees the mark in its re-check and
-+ * refuses, or switched the target before this mapping exists. The mark is
-+ * only set on a registered inode and only cleared when it leaves the view,
-+ * so nr_mmapped <= nr_mappings and no path can unbalance it.
++ * mapped (view_mmapped, view->nr_mmapped, view->mmapped) in the same
++ * critical section, so a concurrent hfs_view_advance either sees the mark
++ * in its re-check and refuses, or switched the target before this mapping
++ * exists. wj4: a successful mmapped registration also counts the new VMA
++ * (view_vmas) there; hfs_mmap_file installs hfs_mmap_ops, whose ->close
++ * gives it back, only after that success. This is the only step that
++ * takes view_vmas from 0 to 1 (->open copies a live VMA), and it holds
++ * view->lock, so hfs_view_unmark_idle_locked cannot drop a mark whose new
++ * VMA it did not see. The mark is only set on a registered inode and is
++ * cleared, with the count, only under view->lock, so nr_mmapped <=
++ * nr_mappings and no path can unbalance it.
 + */
 +static int hfs_view_register(struct inode *inode, bool mmapped)
 +{
@@ -986,9 +1002,13 @@ new file mode 100644
 +		return -ESTALE;
 +	spin_lock_irqsave(&view->lock, flags);
 +	err = hfs_view_link_locked(view, object);
-+	if (!err && mmapped && !object->view_mmapped) {
-+		object->view_mmapped = true;
-+		view->nr_mmapped++;
++	if (!err && mmapped) {
++		atomic_inc(&object->view_vmas);
++		if (!object->view_mmapped) {
++			object->view_mmapped = true;
++			list_add_tail(&object->view_mmap_list, &view->mmapped);
++			view->nr_mmapped++;
++		}
 +	}
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	hfs_view_put(view);
@@ -1003,18 +1023,85 @@ new file mode 100644
 +
 +/* tj4: hfs_mmap_file, before it installs hfs_mmap_ops. Only a mapped inode
 + * can fault pages into the view cache, carry PTEs or take PAGE grants, so
-+ * only it makes the view non-cacheless. The mark is sticky until eviction
-+ * (a munmap or a later mmap_region failure leaves it set), which only
-+ * withholds advance, never permits it wrongly.
++ * only it makes the view non-cacheless. wj4: the mark now lasts while the
++ * inode has a VMA or a page-cache page (hfs_view_unmark_idle_locked), not
++ * until eviction. Each success counts one VMA, so hfs_mmap_file must
++ * install hfs_mmap_ops (and so ->close) exactly when this returns 0.
 + */
 +int hfs_view_mmap_inode(struct inode *inode)
 +{
 +	return hfs_view_register(inode, true);
 +}
 +
-+/* Eviction: leave the inventory and, if it was mapped, the mmapped count.
-+ * A live VMA pins its file and so its inode, so a mapped inode only gets
-+ * here once no mapping of it remains.
++/* wj4: hfs_mmap_ops->open, for a copy of a live hfs VMA: dup_mmap (fork),
++ * __split_vma and copy_vma (mremap). The source VMA still counts, so
++ * view_vmas is >= 1 and this never makes a cleared mark stale; no lock is
++ * needed, and none is taken: ->open and ->close run under mmap_lock
++ * (write, or read after munmap's downgrade, or exit_mmap), and keeping
++ * them lock-free adds no mmap_lock -> view lock order at all.
++ */
++void hfs_view_vma_open(struct inode *inode)
++{
++	atomic_inc(&HFS_I(inode)->view_vmas);
++}
++
++/* wj4: hfs_mmap_ops->close (remove_vma, and the failure paths of
++ * __split_vma and of copy_vma's vma_link (out_vma_link), each balancing
++ * that copy's own ->open; vma_close calls it at most once per VMA). The
++ * VMA's PTEs are gone by then (unmap_region before remove_vma; a failed
++ * copy was never linked), and no fault can still run on it (it left, or
++ * never entered, the mm's tree under mmap_write_lock). Release ordering: a
++ * view_vmas of 0 read with acquire in hfs_view_unmark_idle_locked also
++ * shows that VMA's page-cache insertions in i_mapping->nrpages. A negative
++ * count is a pairing bug; it never reads as 0, so the mark stays (the safe
++ * side) and the warning reports it.
++ */
++void hfs_view_vma_close(struct inode *inode)
++{
++	WARN_ON_ONCE(atomic_dec_return_release(&HFS_I(inode)->view_vmas) < 0);
++}
++
++/* Caller holds view->lock: object leaves the mmapped count (view->mmapped,
++ * nr_mmapped) if it is marked.
++ */
++static void hfs_view_unmark_locked(struct hfs_view *view, struct hfs_inode *object)
++{
++	if (!object->view_mmapped)
++		return;
++	object->view_mmapped = false;
++	list_del_init(&object->view_mmap_list);
++	view->nr_mmapped--;
++}
++
++/* wj4: caller holds view->lock. Drop the mark of every mmapped inode that
++ * can no longer hold target-bound state: no VMA with hfs_mmap_ops is left
++ * (view_vmas == 0, so no PTE and no fault can add a page) and its page
++ * cache is empty (nrpages == 0). A page left behind after munmap keeps the
++ * mark until it leaves the cache (truncate, reclaim, a recall), however
++ * it is accounted otherwise: the tj4 argument that a never-mmapped inode
++ * holds no target-bound state rests on its page cache being empty, so an
++ * unmarked inode must look exactly like that. hfs_cache_aops has no
++ * read_folio, readahead, splice or direct_IO, so the hfs_mmap_ops fault
++ * path is the only page-cache insertion, and it needs a VMA. A new VMA
++ * comes only from hfs_view_mmap_inode, which re-marks the inode under
++ * this lock, so a mark dropped here is never stale for an advance that
++ * re-checks in the same critical section.
++ */
++static void hfs_view_unmark_idle_locked(struct hfs_view *view)
++{
++	struct hfs_inode *object, *next;
++
++	list_for_each_entry_safe(object, next, &view->mmapped, view_mmap_list) {
++		if (atomic_read_acquire(&object->view_vmas) ||
++		    READ_ONCE(object->inode.i_mapping->nrpages))
++			continue;
++		hfs_view_unmark_locked(view, object);
++	}
++}
++
++/* Eviction: leave the inventory and, if it is still marked, the mmapped
++ * count. A live VMA pins its file and so its inode, so a mapped inode only
++ * gets here once no mapping of it remains.
 + */
 +void hfs_view_unregister_inode(struct inode *inode)
 +{
@@ -1028,10 +1115,7 @@ new file mode 100644
 +	if (!list_empty(&object->view_list)) {
 +		list_del_init(&object->view_list);
 +		view->nr_mappings--;
-+		if (object->view_mmapped) {
-+			object->view_mmapped = false;
-+			view->nr_mmapped--;
-+		}
++		hfs_view_unmark_locked(view, object);
 +	}
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	hfs_view_put(view);
@@ -1096,13 +1180,23 @@ new file mode 100644
 + * PTE and PAGE grant come from the hfs_mmap_ops fault path, which
 + * hfs_mmap_file installs only after hfs_view_mmap_inode marked the inode.
 + * view->mappings stays the STOP/recall inventory, exactly as before.
++ *
++ * wj4: an inode whose VMAs have all closed and whose page cache is empty
++ * is back in that never-mmapped state, so its mark is dropped here, in
++ * the same critical section as the test (hfs_view_unmark_idle_locked);
++ * only when everything else is already clean, so a busy view pays no walk.
++ * Otherwise one exec or shared library mapped from the mount would
++ * withhold advance for as long as its inode stays cached.
 + */
-+static bool hfs_view_cacheless_locked(const struct hfs_view *view)
++static bool hfs_view_cacheless_locked(struct hfs_view *view)
 +{
-+	return !view->nr_cached && !view->nr_mmapped && !view->nr_dirty &&
-+	       !view->nr_dirty_packages && !view->nr_grants && !view->active &&
-+	       !view->nr_observations && list_empty(&view->cache) &&
-+	       list_empty(&view->dirty);
++	if (view->nr_cached || view->nr_dirty || view->nr_dirty_packages ||
++	    view->nr_grants || view->active || view->nr_observations ||
++	    !list_empty(&view->cache) || !list_empty(&view->dirty))
++		return false;
++	if (view->nr_mmapped)
++		hfs_view_unmark_idle_locked(view);
++	return !view->nr_mmapped;
 +}
 +
 +/* The stamp and installed target of a LIVE view. xf4: *cacheless (when not
@@ -1153,8 +1247,11 @@ new file mode 100644
 + * same lock before it installs hfs_mmap_ops, so an mmap racing the
 + * adoption is either seen here (refused, -EXDEV) or created after the
 + * switch, its faults then stamped with the new revision and target.
++ * wj4: the re-check may drop idle marks (hfs_view_unmark_idle_locked),
++ * which is why view is not const; it happens under this same lock, so it
++ * is part of the decision, not a separate earlier hint.
 + */
-+static bool hfs_view_advance_allowed(const struct hfs_view *view, const struct hfs_lease *lease,
++static bool hfs_view_advance_allowed(struct hfs_view *view, const struct hfs_lease *lease,
 +				     const struct hfs_view_stamp *stamp,
 +				     const struct hfs_buf *target, const uuid_t *visibility,
 +				     const u8 hash[32], u32 len)
@@ -4872,7 +4969,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2682 @@
+@@ -0,0 +1,2712 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -6615,6 +6712,31 @@ new file mode 100644
 +	return result;
 +}
 +
++/* wj4: count the VMAs of an mmapped inode (hfs_inode.view_vmas), so its
++ * view_mmapped mark can be dropped once none is left and its page cache is
++ * empty (hfs_view_unmark_idle_locked). hfs_mmap_file's successful
++ * hfs_view_mmap_inode counted the first VMA; ->open counts each copy
++ * (dup_mmap, __split_vma, copy_vma), ->close each removal (remove_vma, a
++ * failed split, copy_vma's failed vma_link: out_vma_link). Both are
++ * atomics only and take no lock, so the
++ * mmap_lock they run under orders before nothing new. Having ->close also
++ * makes is_mergeable_vma refuse merging these VMAs, so vma_merge never
++ * frees one without ->close. The only free without ->close left in 6.1 is
++ * __mmap_region's post-->mmap vma_merge, which needs a mergeable
++ * neighbour of the same struct file, i.e. another hfs VMA, which has
++ * ->close and is refused; were it ever taken, the count would only stay
++ * high and keep the mark (the safe side).
++ */
++static void hfs_mmap_open(struct vm_area_struct *vma)
++{
++	hfs_view_vma_open(file_inode(vma->vm_file));
++}
++
++static void hfs_mmap_close(struct vm_area_struct *vma)
++{
++	hfs_view_vma_close(file_inode(vma->vm_file));
++}
++
 +static vm_fault_t hfs_mmap_mkwrite(struct vm_fault *vmf)
 +{
 +	struct hfs_view *view = hfs_view_get(HFS_S(file_inode(vmf->vma->vm_file)));
@@ -6644,6 +6766,8 @@ new file mode 100644
 +}
 +
 +static const struct vm_operations_struct hfs_mmap_ops = {
++	.open = hfs_mmap_open,
++	.close = hfs_mmap_close,
 +	.fault = hfs_mmap_fault,
 +	.page_mkwrite = hfs_mmap_mkwrite,
 +	.cache_begin = hfs_view_page_enter,
@@ -6675,6 +6799,9 @@ new file mode 100644
 +	/* tj4: mark the inode mmapped (view->nr_mmapped) under view->lock
 +	 * before hfs_mmap_ops can fault anything, so the view stops counting as
 +	 * cacheless for xf4 advance before it can hold target-bound state.
++	 * wj4: a success also counts this VMA (view_vmas), so hfs_mmap_ops,
++	 * whose ->close gives it back, is installed exactly then; a failure
++	 * counts nothing and installs nothing.
 +	 */
 +	err = READ_ONCE(session->blocked) || READ_ONCE(control->error) ? -EHOSTDOWN :
 +		hfs_view_mmap_inode(inode);

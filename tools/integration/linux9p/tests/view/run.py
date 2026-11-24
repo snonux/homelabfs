@@ -82,6 +82,24 @@ def mmap_install_guard(text):
         raise SystemExit('refuse: hfs_mmap_ops must be installed only after a successful mark')
 
 
+def mmap_vma_count_guard(text):
+    """wj4: the harness compiles hfs_view_vma_open/close, not hfs_mmap_ops,
+    so the source is checked: hfs_mmap_ops' .open and .close are
+    hfs_mmap_open and hfs_mmap_close, which pass the VMA's file inode to
+    hfs_view_vma_open and hfs_view_vma_close (nothing else calls those in
+    fs/9p, see mmap_mark_guard). Without .close the count never drops and the
+    mark stays (safe, but wj4's fix is lost); without .open a fork, split or
+    mremap copy is not counted and the mark could drop under a live VMA."""
+    start = text.index('static const struct vm_operations_struct hfs_mmap_ops = {')
+    ops = text[start:text.index('\n};', start)]
+    for op, helper in (('open', 'hfs_view_vma_open'), ('close', 'hfs_view_vma_close')):
+        signature = f'\nstatic void hfs_mmap_{op}(struct vm_area_struct *vma)\n{{'
+        body = function_body(text, signature) if signature in text else ''
+        if (f'\n\t.{op} = hfs_mmap_{op},\n' not in ops or
+                f'\t{helper}(file_inode(vma->vm_file));' not in body):
+            raise SystemExit(f'refuse: hfs_mmap_ops .{op} must count VMAs through {helper}')
+
+
 def mmap_route_guard(files):
     """wj4: hfs_file_fops' .mmap is hfs_mmap, which sends a bridge session to
     hfs_mmap_file (the provider's own mmap serves only non-bridge sessions)."""
@@ -112,6 +130,16 @@ def mmap_mark_guard(source):
     """
     text = (source / 'fs/9p/hfs_mmap.c').read_text()
     mmap_install_guard(text)
+    mmap_vma_count_guard(text)
+    # wj4: the VMA count changes only in hfs_mmap_open/close (and, for the
+    # first VMA, inside hfs_view_mmap_inode).
+    counters = []
+    for path in sorted((source / 'fs/9p').rglob('*')):
+        if path.suffix in ('.c', '.h', '.inc') and path.is_file() and path.name != 'hfs_view.h':
+            counters += [path.name] * len(re.findall(
+                r'hfs_view_vma_(?:open|close)\(', path.read_text(errors='replace')))
+    if sorted(counters) != ['hfs_mmap.c', 'hfs_mmap.c', 'hfs_view.c', 'hfs_view.c']:
+        raise SystemExit(f'refuse: hfs_view_vma_open/close called outside hfs_mmap_ops: {counters}')
     installs = []
     for path in sorted((source / 'fs/9p').rglob('*')):
         if path.suffix in ('.c', '.h', '.inc') and path.is_file():

@@ -2345,6 +2345,12 @@ Three small follow-ups, done together (worktree `kn1`).
   The sticky mark only withholds advance (it never permits a wrong one), so
   leaving it is the safe default. wj4 stays open for (1).
 
+  Done later; see "The mmapped mark ends with the last VMA (`wj4`)" below.
+  The first point did not hold: `hfs_mmap_file` (under `mmap_write_lock`)
+  and the fault path (under `mmap_read_lock`) already take
+  `session->lock` through `hfs_view_get`, so that order is not new; the
+  final design takes no lock in `->open` or `->close` at all.
+
 The series was regenerated with `export.py --task kn1` (0003:
 `hfs_inode.c`; 0004: `hfs_view.c`). No candidate was rebuilt, booted or
 admitted.
@@ -2656,3 +2662,130 @@ Results (owned prepared tree, this host, another kernel build running):
 with `REPLAY_CONTROL ... VIEW_ACQUIRE = -110` (an uncertain control
 deadline under load) and passed when rerun alone (88 s). That test does
 not touch the changed code; its flakiness is not investigated here.
+
+## The mmapped mark ends with the last VMA (`wj4`)
+
+Since tj4, `hfs_mmap_file` marks an inode `view_mmapped` and the mark kept
+the view non-cacheless (no xf4 advance) until the inode was evicted. One
+exec or shared library mapped from the mount therefore withheld advance for
+as long as its inode stayed cached. Now the mark is dropped once the inode
+has no VMA left and its page cache is empty.
+
+Design (patches 0003 `hfs.h`, `hfs_inode.c`; 0004 `hfs_view.[ch]`,
+`hfs_mmap.c`):
+
+- **VMA count.** `hfs_inode.view_vmas` (atomic) counts the VMAs that carry
+  `hfs_mmap_ops`:
+  - `hfs_view_mmap_inode` adds 1 under `view->lock`, in the critical
+    section that sets the mark. `hfs_mmap_file` installs `hfs_mmap_ops`
+    only after that succeeds, and a failure counts nothing.
+  - The new `->open` (`hfs_mmap_open` -> `hfs_view_vma_open`) adds 1 for
+    each copy of a live VMA: `dup_mmap` (fork), `__split_vma` and
+    `copy_vma` (mremap).
+  - The new `->close` (`hfs_mmap_close` -> `hfs_view_vma_close`) subtracts
+    1 in `remove_vma` (munmap, exit, the old range of a mremap), on the
+    failure paths of `__split_vma`, and in `copy_vma`'s `out_vma_link`
+    (its `vma_link` failed). Each failure path balances that copy's own
+    `->open`. In 6.1 `vma_close` calls it at most once per VMA.
+
+  A copy always comes from a live VMA, so the only 0 -> 1 step is
+  `hfs_view_mmap_inode`, under `view->lock`.
+- **VMA lifecycle (6.1.190 as pinned).** With `->close` set,
+  `is_mergeable_vma` refuses these VMAs, so `vma_merge` and
+  `__mmap_region`'s `vma_expand` never free or grow one without
+  `->open`/`->close`. mremap's in-place growth uses `vma_adjust` when
+  `->close` is set (no new VMA). `__mmap_region` has no failure path after
+  a successful `->mmap`. Its post-`->mmap` re-merge (taken because
+  `hfs_mmap_file` sets `VM_NOHUGEPAGE`) would free the new VMA without
+  `->close`, but it needs a mergeable neighbour of the same `struct file`,
+  i.e. another hfs VMA, which is refused. If such a path were ever taken,
+  the count would only stay high and the mark would stay (the safe side).
+  A negative count (a pairing bug) warns and never reads as 0.
+- **Unmarking.** `hfs_view_cacheless_locked` (the capture hint and the
+  advance re-check, both under `view->lock`) first checks every other term.
+  Only if they are all clean and `nr_mmapped` is set does it walk
+  `view->mmapped` (the marked inodes, `view_mmap_list`; not all of
+  `view->mappings`, up to 4096) with `hfs_view_unmark_idle_locked`. That
+  drops each mark whose inode has `view_vmas == 0` (acquire, paired with
+  the release decrement in `->close`) and `i_mapping->nrpages == 0`.
+  The drop and the adoption's re-check and switch share one critical
+  section.
+- **Pages after munmap.** A page left in the page cache keeps the mark until
+  it leaves (truncate, reclaim, a recall), even when no `hfs_cache_page`
+  counts it any more (`hfs_cache_invalidate` detaches the entry before
+  the folio leaves the mapping). The tj4 argument that a never-mmapped
+  inode is cacheless rests on its page cache being empty: no generic path
+  (`read_folio`, readahead, splice, `copy_file_range`, `direct_IO`) fills
+  it, and the only insertion is the `hfs_mmap_ops` fault, which needs a
+  VMA. An unmarked inode must look exactly like that. Eviction still clears
+  the mark, as before (`hfs_view_unregister_inode`).
+- **Racing mmap.** A new VMA comes only from `hfs_view_mmap_inode`, which
+  re-marks the inode under `view->lock`. Either the unmarking sees the new
+  count and keeps the mark, or the mmap comes after the drop (and after any
+  adoption in that critical section) and marks the inode again, its faults
+  stamped with the new revision. A fault cannot outlive its VMA's
+  `->close`: munmap detaches the VMA under `mmap_write_lock`, which
+  excludes the fault's `mmap_read_lock` (no per-VMA locks in 6.1).
+- **Lock order.** `->open` and `->close` take no lock (atomics only), so
+  no `mmap_lock -> session->lock` or `mmap_lock -> view->lock` order is
+  added. The kn1 deferral note called that order new, but it already
+  exists: `hfs_mmap_file` (under `mmap_write_lock`) and
+  `hfs_mmap_fault`/`hfs_mmap_mkwrite` (under `mmap_read_lock`) take
+  `session->lock` through `hfs_view_get`. The walk runs under the
+  `view->lock` spinlock with interrupts off and reads only atomics and
+  `nrpages` (no `i_pages` lock), at most `nr_mmapped` entries, and only
+  when the view is otherwise cacheless.
+
+Tests:
+
+- `view/test.c`:
+  - `advance_unmark_checks`, one helper per scenario:
+    - `unmark_last_close`: the last `->close` with no page drops the mark
+      at the next cacheless test; the still registered inode keeps the
+      view cacheless, and advance is adopted.
+    - `unmark_second_vma`: a second VMA (`->open`: fork, split, mremap)
+      keeps the mark until it closes too; the mmap after the earlier drop
+      marks the inode again.
+    - `unmark_page_left`: a page left after munmap (`nrpages = 1`) keeps
+      it until `nrpages` is 0.
+    - `unmark_two_inodes`: of two marked inodes only the idle one is
+      dropped, and eviction of a marked inode clears it.
+  - `advance_unmark_race`: a mapper thread runs 2000 mmap/`->open`/
+    `->close` rounds, checking under `view->lock` that its mark is set and
+    `view->revision` did not move while its VMA lived. Meanwhile the main
+    thread captures and adopts advances whenever the hint is cacheless; a
+    development run adopted 32177 of 169396 attempts mid-race. Once the
+    mapper is done the view must adopt.
+  - `advance_mapping_checks` closes its VMAs before the eviction.
+- `view --pressure` (`retry_advance_never`): the mark withholds advance
+  while the VMA lives; the VMA closes before the eviction.
+- `view/run.py` `mmap_vma_count_guard` (both modes): `hfs_mmap_ops` has
+  `.open = hfs_mmap_open` and `.close = hfs_mmap_close`, which pass
+  `file_inode(vma->vm_file)` to `hfs_view_vma_open`/`close`, and nothing
+  else in `fs/9p` calls those. `compat.h` gains `nrpages`, `atomic_t` with
+  the kernel's orderings and the new `hfs_inode` members;
+  `list_for_each_entry_safe` moved there from `pressure/compat_extra.h`.
+- Red first: main's source makes the guard refuse (no `.open`), and
+  `test.c` cannot build (no `hfs_view_vma_open`/`close`).
+- Mutants, each killed by `view` or `view --pressure`:
+  - the walk never drops a mark (the old sticky behaviour);
+  - pages are ignored;
+  - VMAs are ignored;
+  - `->open` does not count;
+  - `hfs_view_mmap_inode` does not count (the underflow warning);
+  - the count is taken after `view->lock` is released (the race test);
+  - the unmark does not leave `view->mmapped`;
+  - `hfs_mmap_ops` without `.close` (the guard).
+
+Not exercised: no guest kernel was booted, so the VMA lifecycle (fork,
+split, mremap, exit, reclaim of a leftover page) ran only as the harness
+model above, against the 6.1.190 source reading described here. On a
+fresh `prepare.py` tree of the exported series (fuzz zero), `fs/9p/` and
+`net/9p/` build with 0 warnings with `CONFIG_9P_FS_HOMELABFS_CONTROLLED`
+on and off, `build.py --module-objects` passes, and view and view
+--pressure (sanitized and plain), mount_hello, transport, policy, cursor,
+tag, capture, codec, requests, setattr, reclaim, root, huge, dirty, mapped
+and `tests/controlled` (10 PASS) pass. controlled_received was not run. The
+series was regenerated with `export.py --task wj4` (0003: `hfs.h`,
+`hfs_inode.c`; 0004: `hfs_view.[ch]`, `hfs_mmap.c`). No candidate was
+rebuilt, booted or admitted.
