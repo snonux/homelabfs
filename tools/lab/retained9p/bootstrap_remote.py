@@ -52,6 +52,10 @@ GUARD_FILES = ("intent.json", "started.json", "breach.json", "stop-intent.json",
 STDOUT_LIMIT = 64 << 10      # runtime.stdout holds three short stage records
 FILE_LIMIT = 64 << 10        # guard records, manifest, mount_tag
 PROPOSAL_LIMIT = 512 << 10   # the runtime's handoff/config bound
+# ol4: the staged runtime.config, checked as the runtime reads it
+# (controlledruntime readRuntimeFile: owned by root, no group/other bits,
+# one link, at most 512 KiB), so preflight refuses what the runtime would.
+CONFIG_LIMIT = 512 << 10
 PAYLOAD_LIMIT = 512 << 10    # enrollment.json; provision/bind are smaller
 OUTPUT_LIMIT = 1 << 20       # captured child output per stream
 SECONDS_MAX = 120            # any remote child bound: at most the whole bootstrap
@@ -149,10 +153,12 @@ def trusted(system, path, private=False):
     return info
 
 
-def pinned_file(system, path, expected):
-    info = trusted(system, path)
+def pinned_file(system, path, expected, private=False, limit=256 << 20):
+    """A root-owned single-link regular file with exactly the pinned bytes;
+    `private` also refuses any group/other permission bit."""
+    info = trusted(system, path, private)
     require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "pinned file shape: " + path)
-    raw = read_bounded(system.path(path), 256 << 20)
+    raw = read_bounded(system.path(path), limit)
     require(digest(raw) == expected, "pinned file bytes differ: " + path)
 
 
@@ -165,14 +171,23 @@ def absent(system, path):
 
 
 def host_preflight(system, args, payload):
-    """Pinned guard/runtime bytes, fresh guard/owner/handoff targets."""
+    """Pinned guard/runtime/config bytes, fresh guard/owner/handoff targets.
+
+    ol4: `--config` is the staged runtime.config the guard argv launches the
+    runtime with; `--config-sha256` is the plan's prep.config_sha256, the
+    workstation bundle file it was copied from byte for byte (Phase 7) and
+    the copy whose Exporter.SHA256 the bootstrap checked (nl4). Without
+    this, a staged copy naming another exporter would run unnoticed.
+    """
     pinned_file(system, args.guard_script, args.guard_sha256)
     pinned_file(system, args.runtime, args.runtime_sha256)
+    pinned_file(system, args.config, args.config_sha256, private=True, limit=CONFIG_LIMIT)
     for path in (args.guard_dir, args.owner_dir, args.enrollment_file):
         absent(system, path)
     parent = trusted(system, os.path.dirname(args.enrollment_file), private=True)
     require(stat.S_ISDIR(parent.st_mode), "enrollment parent must be a private directory")
-    return {"guard_sha256": args.guard_sha256, "runtime_sha256": args.runtime_sha256}
+    return {"guard_sha256": args.guard_sha256, "runtime_sha256": args.runtime_sha256,
+            "config_sha256": args.config_sha256}
 
 
 def host_poll(system, args, payload):
@@ -471,8 +486,8 @@ def parser():
     result = argparse.ArgumentParser(prog="bootstrap_remote", allow_abbrev=False)
     sub = result.add_subparsers(dest="action", required=True)
     options = {
-        "host-preflight": ["guard-script", "guard-sha256", "runtime", "runtime-sha256",
-                           "guard-dir", "owner-dir", "enrollment-file"],
+        "host-preflight": ["guard-script", "guard-sha256", "runtime", "runtime-sha256", "config",
+                           "config-sha256", "guard-dir", "owner-dir", "enrollment-file"],
         "host-poll": ["guard-dir"], "host-proposal": ["path"], "guest-ping": [],
         "host-observe": ["executable", "executable-sha256", "socket", "runtime-id", "sequence",
                          "seconds"],

@@ -343,13 +343,16 @@ class BootstrapPlanTests(test_bootstrap.Case):
         return [options for _, action, options, _ in self.world.calls if action == "guest-mount"]
 
     def assert_refused_before_launch(self, change, text):
-        """Through run, on a fresh root per call: refused before the journal
-        or any remote call. `change(root)` returns the plan change."""
+        """Through run, on a fresh root and a fresh World per call: refused
+        before the journal or any remote call. `change(root)` returns the
+        plan change. The World is not self.world, so one subtest's calls
+        cannot make the next one's `calls == []` fail (ol4)."""
         root = Path(tempfile.mkdtemp(dir=self.root))
+        world = test_bootstrap.World(root)
         path, digest = test_bootstrap.plan_fixture(root, change(root))
         with self.assertRaisesRegex(test_bootstrap.bootstrap.Refused, text):
-            test_bootstrap.bootstrap.run(path, digest, root / "out", boundaries=self.world.boundaries)
-        self.assertEqual(self.world.calls, [])
+            test_bootstrap.bootstrap.run(path, digest, root / "out", boundaries=world.boundaries)
+        self.assertEqual(world.calls, [])
         self.assertFalse((root / "out").exists())
 
     def test_plan_without_candidate_mounts_without_the_option(self):
@@ -388,6 +391,21 @@ class BootstrapPlanTests(test_bootstrap.Case):
                                 ({"config_exporter": R21_EXPORTER}, "Exporter.SHA256 .* not the candidate's exporter")]:
             with self.subTest(text=text), s64_candidates(test_bootstrap.bootstrap.controller):
                 self.assert_refused_before_launch(lambda root: fd_attr_change(root, **arguments), text)
+
+    def test_staged_f3_config_must_be_the_checked_one(self):
+        """ol4: load_plan checks the workstation runtime config's exporter;
+        the daemon launches with f3's staged runtime.config. A staged copy
+        naming the r21 exporter differs from prep.config_sha256, so host
+        preflight refuses it and the runtime never starts."""
+        def change(plan):
+            self.fd_attr_plan()(plan)  # the workstation copy names the s64 exporter
+            config = json.loads(Path(plan["prep"]["config"]).read_bytes())
+            config["Exporter"]["SHA256"] = list(bytes.fromhex(R21_EXPORTER))
+            self.world.f3_config = json.dumps(config).encode()
+        with s64_candidates(test_bootstrap.bootstrap.controller):
+            self.assertEqual(self.run_plan(change), 1)
+        self.assert_stopped("host-preflight", "failed", "pinned file bytes differ")
+        self.assertFalse(self.world.launched)
 
     def test_candidate_manifest_must_be_the_named_one(self):
         def changed(root):

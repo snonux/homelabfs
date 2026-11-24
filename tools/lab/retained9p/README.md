@@ -269,13 +269,18 @@ refuses before any contact:
     the pin host preflight checks the f3 executable against, and its
     `freebsd/bhyve` (kind `exporter`) must be the workstation runtime
     config's `Exporter.SHA256` (`prep.config`), which the runtime checks
-    bhyve against before exec. The f3 `runtime.config` is the staged copy of
-    that bundle file; the bootstrap does not re-hash it on f3, as before nl4.
+    bhyve against before exec.
+  - the config copy the daemon runs with: the f3 `runtime.config` is the
+    staged, byte-identical copy of that bundle file (Phase 7). The
+    `host-preflight` step re-hashes it on f3 against the same
+    `prep.config_sha256` (ol4, every plan, not only fd_attr ones), so the
+    Exporter.SHA256 checked on the workstation is the one the runtime reads.
 
   So a plan that names an s64 candidate for a run with a pre-s64 kernel or
-  daemon, or with a workstation runtime config naming a pre-s64 exporter,
-  refuses. A staged f3 `runtime.config` that differs from the workstation
-  copy is not caught (task ol4). `mount-0`/`mount-1` then pass
+  daemon, or with a runtime config (workstation or staged f3 copy) naming a
+  pre-s64 exporter, refuses: the workstation copy in `load_plan` before any
+  contact, a differing f3 copy in `host-preflight` before launch.
+  `mount-0`/`mount-1` then pass
   `--fd-attr on` and mount with
   `trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`.
   `bootstrap_remote.py guest-mount` requires the mountinfo row to show
@@ -927,7 +932,7 @@ primitives, and keeps the Go tools (`hfs-runtime-prep`,
 
 | Step | Kind | What happens |
 |---|---|---|
-| `host-preflight` | read | f3: guard script and runtime match their pins; guard run dir, OwnerDirectory and EnrollmentFile absent; handoff directory root-private |
+| `host-preflight` | read | f3: guard script and runtime match their pins; the staged `runtime.config` matches `prep.config_sha256` and is root-private and single-link, as the runtime requires (ol4); guard run dir, OwnerDirectory and EnrollmentFile absent; handoff directory root-private |
 | `launch` | launch | `doas -n python3.12 -I -B runtime-guard.py … -- hfs-controlled-runtime --config … --disposable-validation` in one long-lived f3 SSH session, detached from this terminal; the 120 s start here |
 | `proposal` | read | runtime stdout's first record is `AWAITING_OPERATOR_ENROLLMENT` naming `OwnerDirectory/proposal.json`; a private copy of its bytes |
 | `guest-ready` | read | Rocky answers SSH, runs the plan's test kernel release (GRUB consumed `next_entry`), boot ID |
@@ -961,8 +966,13 @@ OwnerDirectory/EnrollmentFile, the staged `rocky_kernel.py` and its plan/
 state/test kernel release, `hfs-runtime-prep` and the bundle's
 `request-template.json` (pinned; its device tags must be `hfs0`, `hfs1`) and
 `runtime-config.json` (pinned; only `BootstrapSeconds`, `OwnerDirectory` and
-`EnrollmentFile` are read and compared with the plan, the host receipt keys it
-also holds are neither kept nor logged),
+`EnrollmentFile` are read and compared with the plan, plus `Exporter.SHA256`
+on an fd_attr plan; the host receipt keys it also holds are neither kept nor
+logged; `prep.config_sha256` also pins the staged f3 copy `runtime.config`,
+which `host-preflight` re-hashes (ol4). Reusing that pin rather than adding a
+plan field keeps the plan schema, and every plan gets the check: Phase 7
+stages the bundle file unchanged, and a plan made before ol4 pins the old
+`bootstrap_remote.py` in `remote_sha256`, so it needs refilling anyway),
 the observer fields of `ObserverInput` except the manifest hash, and the two
 mounts, which must be `hfsN` on `/var/tmp/hfs-zq3-RUN/mN` (what
 `observer_key.py stage` creates). The optional `fd_attr_candidate_sha256`
