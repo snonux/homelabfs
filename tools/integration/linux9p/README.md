@@ -2778,7 +2778,13 @@ Tests:
 
 Not exercised: no guest kernel was booted, so the VMA lifecycle (fork,
 split, mremap, exit, reclaim of a leftover page) ran only as the harness
-model above, against the 6.1.190 source reading described here. The
+model above, against the 6.1.190 source reading described here. On a
+fresh `prepare.py` tree of the exported series (fuzz zero), `fs/9p/` and
+`net/9p/` build with 0 warnings with `CONFIG_9P_FS_HOMELABFS_CONTROLLED`
+on and off, `build.py --module-objects` passes, and view and view
+--pressure (sanitized and plain), mount_hello, transport, policy, cursor,
+tag, capture, codec, requests, setattr, reclaim, root, huge, dirty, mapped
+and `tests/controlled` (10 PASS) pass. controlled_received was not run. The
 series was regenerated with `export.py --task wj4` (0003: `hfs.h`,
 `hfs_inode.c`; 0004: `hfs_view.[ch]`, `hfs_mmap.c`). No candidate was
 rebuilt, booted or admitted.
