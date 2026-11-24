@@ -2614,7 +2614,7 @@ Tests: `transport` (exempt; red first), `mount_hello`
 admitted CALL ended: no QUERY; red first in review 1) and `abandon-old` (the
 latter against the exporter without ABANDON, built
 with `build.py --old-exporter`), and `controlled_received --scenario
-abandon` (`TestControlledReceivedActualAbandon`). The design doc lists what
+abandon` (`TestControlledReceivedActualAbandon`; also a stage of `--scenario both`, which now has 20 stages). The design doc lists what
 each case checks. `view/compat.h` stubs `hfs_session_abandon_queue` for the
 actual `hfs_session_block` of `view --pressure`.
 
