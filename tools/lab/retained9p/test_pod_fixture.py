@@ -226,6 +226,9 @@ class Mirror:
                              "glibc-2.34-231.el9_8.x86_64")
                       for name in list(self.FILES) + list(self.LINKS)}
         self.db = {name: self.row(name) for name in self.owner}
+        # pl4: name a package's file list prints instead of the path (usrmerge
+        # alias rows, as Fedora 45's libgcc does), and extra (nevra, name, row).
+        self.listed, self.extra_rows = {}, []
         self.algo, self.signature = "8", "RSA/SHA256, Key ID 702d426d350d275d"
         self.maps = ["/usr/bin/python3.9", "/usr/lib64/ld-linux-x86-64.so.2", "/usr/lib64/libc.so.6",
                      "/usr/lib64/libffi.so.8.1.0",
@@ -253,8 +256,10 @@ class Mirror:
         if argv[:3] == ["rpm", "-q", "--qf"] and argv[3] == pod.RPM_HEADER:
             return 0, ("%s\t%s\t%s\n" % (self.algo, ROCKY, self.signature)).encode(), b""
         if argv[:3] == ["rpm", "-q", "--qf"] and argv[3] == pod.RPM_FILES:
-            rows = ["%s\t%d\t%s\t%s\n" % (name, *self.db[name]) for name, nevra in
-                    sorted(self.owner.items()) if nevra == argv[4]]
+            rows = ["%s\t%d\t%s\t%s\n" % (self.listed.get(name, name), *self.db[name])
+                    for name, nevra in sorted(self.owner.items()) if nevra == argv[4]]
+            rows += ["%s\t%d\t%s\t%s\n" % (name, *row) for nevra, name, row in self.extra_rows
+                     if nevra == argv[4]]
             return 0, "".join(rows).encode(), b""
         return None
 
@@ -570,12 +575,75 @@ class ManifestTests(Sandbox):
             self.assertIn(name, entries)
         self.assertEqual({p["vendor"] for p in manifest["packages"]}, {ROCKY})
 
+    def test_loader_cache_mapping_leaves_manifest_unchanged(self):
+        """pl4: a host that keeps /etc/ld.so.cache mapped gets the same digest.
+
+        The mirror's maps are Rocky-shaped and have no loader cache, as Rocky's
+        real closure cannot have had (the pre-pl4 rule refused it, yet zq3-r15
+        to r19 computed 34a71569…). Adding the cache changes nothing, so the
+        skip cannot move the pinned Rocky digest.
+        """
+        self.assertNotIn(pod.LOADER_CACHE, self.mirror.maps)
+        before = pod.canonical(pod.compute_manifest(self.host))
+        self.mirror.maps.append(pod.LOADER_CACHE)
+        after = pod.compute_manifest(self.host)
+        self.assertEqual(pod.canonical(after), before)
+        self.assertNotIn(pod.LOADER_CACHE, {entry["path"] for entry in after["entries"]})
+
+    LIBC, LIBC_ALIAS = "/usr/lib64/libc.so.6", "/lib64/libc.so.6"
+
+    def test_usrmerge_alias_row_attests_like_the_usr_row(self):
+        """pl4: a package listing /lib64/X (Fedora 45 libgcc) attests /usr/lib64/X."""
+        before = pod.canonical(pod.compute_manifest(self.host))
+        self.mirror.listed[self.LIBC] = self.LIBC_ALIAS
+        self.assertEqual(pod.canonical(pod.compute_manifest(self.host)), before)
+
+    def test_usr_row_wins_over_alias_row(self):
+        """Rocky argument: with the /usr row present the alias is never consulted.
+
+        Every input the pre-pl4 rule accepted has a /usr row for each path, so
+        even a conflicting alias row leaves the manifest (and 34a71569…) unchanged.
+        """
+        before = pod.canonical(pod.compute_manifest(self.host))
+        mode, _, _ = self.mirror.db[self.LIBC]
+        self.mirror.extra_rows.append((self.mirror.owner[self.LIBC], self.LIBC_ALIAS,
+                                       (mode, "0" * 64, "")))
+        self.assertEqual(pod.canonical(pod.compute_manifest(self.host)), before)
+
+    def test_alias_row_with_wrong_digest_refuses(self):
+        self.mirror.listed[self.LIBC] = self.LIBC_ALIAS
+        mode, _, _ = self.mirror.db[self.LIBC]
+        self.mirror.db[self.LIBC] = (mode, "0" * 64, "")
+        self.refuses("content differs from rpm database", pod.compute_manifest, self.host)
+
+    def test_alias_needs_the_usrmerge_symlink(self):
+        """No alias where /lib64 is a real directory or links elsewhere."""
+        self.mirror.listed[self.LIBC] = self.LIBC_ALIAS
+        lib64 = self.mirror.src + "/lib64"
+        for kind in ("directory", "other target"):
+            with self.subTest(kind=kind):
+                os.unlink(lib64) if os.path.islink(lib64) else os.rmdir(lib64)
+                if kind == "directory":
+                    os.mkdir(lib64)
+                else:
+                    os.symlink("usr/lib", lib64)
+                    self.mirror.db["/lib64"] = self.mirror.row("/lib64")  # /lib64 itself attests.
+                self.refuses("not listed by its owning package: " + self.LIBC,
+                             pod.compute_manifest, self.host)
+
     def test_refuses_unattested_or_unexpected_inputs(self):
         cases = [
             ("content differs from rpm database",
              lambda: Path(self.mirror.src + "/usr/lib64/libc.so.6").write_bytes(b"evil")),
             ("not owned by an installed package", lambda: self.mirror.owner.pop("/usr/lib64/libc.so.6")),
             ("mapped file outside /usr", lambda: self.mirror.maps.append("/opt/evil.so")),
+            # pl4: only the exact loader cache is skipped; its neighbours still refuse.
+            ("mapped file outside /usr", lambda: self.mirror.maps.append("/etc/ld.so.preload")),
+            ("mapped file outside /usr", lambda: self.mirror.maps.append("/etc/localtime")),
+            ("mapped file outside /usr",
+             lambda: self.mirror.maps.append("/etc/ld.so.cache (deleted)")),
+            ("mapped file outside /usr",
+             lambda: self.mirror.maps.append("/etc/ld.so.cache.d/evil.so")),
             ("module outside the Rocky python3.9 stdlib",
              lambda: self.mirror.modules.append("/home/paul/evil.py")),
             ("module outside the Rocky python3.9 stdlib",

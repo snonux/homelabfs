@@ -645,11 +645,23 @@ It is a directory built from Rocky's own installed files and started with
 - `manifest` (read-only, usable for Phase 1 facts) runs the workload's own
   `closure` mode under the pinned `/usr/bin/python3.9 -I -B -S` with
   `LC_ALL=C`. That mode exercises the workload's code paths and lists every
-  module file and `/proc/self/maps` file the interpreter loaded. The manifest
+  module file and `/proc/self/maps` file the interpreter loaded. Mapped files
+  must lie under `/usr`; the one exception is the exact path
+  `/etc/ld.so.cache`, which is skipped rather than refused (pl4). It is
+  ldconfig's generated loader cache, not RPM content, and the rootfs works
+  without it (ld.so falls back to its default library paths). Some hosts'
+  loaders keep it mapped (Fedora 45); Rocky's python3.9 does not, so Rocky's
+  manifest digest is unchanged. The manifest
   then adds the usrmerge links (`/lib64` for PT_INTERP) and versioned SONAME
   links. It requires every file to be owned by a package whose
   `FILEDIGESTALGO` is SHA256, with mode, digest and link target equal to the
-  RPM database row. Fixture-made entries are labelled `origin: fixture`: the
+  RPM database row. A path's own `/usr/X/...` row always wins; only when no
+  owning package lists it is that package's merged-usr alias row `/X/...`
+  used (X = `bin`, `lib`, `lib64`, `sbin`), and only where the host's `/X` is
+  the symlink `usr/X` (pl4: Fedora 45's libgcc lists
+  `/lib64/libgcc_s-*.so.1`). The alias row is checked exactly like a direct
+  one, and inputs that already had `/usr` rows give the same manifest, so
+  Rocky's digest is unchanged. Fixture-made entries are labelled `origin: fixture`: the
   directories and mount points, a minimal numeric `/etc/passwd`/`group`, empty
   `/etc/hosts`/`hostname`/`resolv.conf` and the workload. The command prints
   the canonical manifest and its SHA256. With `TZ=UTC` and `LC_ALL=C` the same
