@@ -228,6 +228,13 @@ The tooling now admits only this manifest, and `FD_ATTR` holds it:
 `internal/runtimeprep/testdata/zq3-spec.json` pin the new exporter
 `8cadae40…`.
 
+**Gates** (after the pins moved, on go1.27.4): the `tools/lab`,
+directlaunch and artifacts Python suites, lib9p `verify.sh` and `go vet
+./...` passed. `go test -race -p 2 ./...` passed in every package except
+`internal/viewcontrol`, which was still running when the gate's 3600 s
+bound stopped it; run alone, `go test -race ./internal/viewcontrol/`
+passed in 1719 s. No data race was reported.
+
 **Known environmental failure:** in the retained9p suite 434 of 435 tests
 pass. `test_pod_fixture.RealRpmTests.test_manifest_build_and_chroot_start`
 refuses with "mapped file outside /usr: /etc/ld.so.cache" on the Fedora 45
