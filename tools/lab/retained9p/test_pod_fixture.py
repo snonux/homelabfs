@@ -570,12 +570,34 @@ class ManifestTests(Sandbox):
             self.assertIn(name, entries)
         self.assertEqual({p["vendor"] for p in manifest["packages"]}, {ROCKY})
 
+    def test_loader_cache_mapping_leaves_manifest_unchanged(self):
+        """pl4: a host that keeps /etc/ld.so.cache mapped gets the same digest.
+
+        The mirror's maps are Rocky-shaped and have no loader cache, as Rocky's
+        real closure cannot have had (the pre-pl4 rule refused it, yet zq3-r15
+        to r19 computed 34a71569…). Adding the cache changes nothing, so the
+        skip cannot move the pinned Rocky digest.
+        """
+        self.assertNotIn(pod.LOADER_CACHE, self.mirror.maps)
+        before = pod.canonical(pod.compute_manifest(self.host))
+        self.mirror.maps.append(pod.LOADER_CACHE)
+        after = pod.compute_manifest(self.host)
+        self.assertEqual(pod.canonical(after), before)
+        self.assertNotIn(pod.LOADER_CACHE, {entry["path"] for entry in after["entries"]})
+
     def test_refuses_unattested_or_unexpected_inputs(self):
         cases = [
             ("content differs from rpm database",
              lambda: Path(self.mirror.src + "/usr/lib64/libc.so.6").write_bytes(b"evil")),
             ("not owned by an installed package", lambda: self.mirror.owner.pop("/usr/lib64/libc.so.6")),
             ("mapped file outside /usr", lambda: self.mirror.maps.append("/opt/evil.so")),
+            # pl4: only the exact loader cache is skipped; its neighbours still refuse.
+            ("mapped file outside /usr", lambda: self.mirror.maps.append("/etc/ld.so.preload")),
+            ("mapped file outside /usr", lambda: self.mirror.maps.append("/etc/localtime")),
+            ("mapped file outside /usr",
+             lambda: self.mirror.maps.append("/etc/ld.so.cache (deleted)")),
+            ("mapped file outside /usr",
+             lambda: self.mirror.maps.append("/etc/ld.so.cache.d/evil.so")),
             ("module outside the Rocky python3.9 stdlib",
              lambda: self.mirror.modules.append("/home/paul/evil.py")),
             ("module outside the Rocky python3.9 stdlib",

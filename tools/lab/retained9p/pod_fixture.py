@@ -89,6 +89,14 @@ GENERATED = {"/etc/passwd": b"root:x:0:0:root:/:/usr/bin/python3.9\n",
              "/etc/group": b"root:x:0:\n", "/etc/hosts": b"", "/etc/hostname": b"",
              "/etc/resolv.conf": b""}
 TOP_LINKS = ("bin", "lib", "lib64", "sbin")  # usrmerge links, e.g. PT_INTERP /lib64.
+# The one mapped file outside /usr the closure skips (pl4). It is ldconfig's
+# generated loader cache, not RPM-attestable content, and the rootfs needs no
+# copy: without it ld.so falls back to its default /lib64 and /usr/lib64 search.
+# Some hosts' loaders keep it mapped (the Fedora 45 workstation since
+# 2026-11-24); Rocky's python3.9 does not (the old rule refused it, yet the
+# zq3-r15 to r19 manifests were computed), so skipping it leaves Rocky's
+# manifest digest unchanged. Exact match only: anything else is still refused.
+LOADER_CACHE = "/etc/ld.so.cache"
 SONAME = re.compile(r"(lib[A-Za-z0-9_.+-]*|ld-linux-x86-64)\.so\.[0-9][0-9.]*\Z")
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 RUN_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,23}\Z")
@@ -205,7 +213,11 @@ def source(path):
 
 
 def closure_paths(host):
-    """Files the workload interpreter loads, from its own closure run."""
+    """Files the workload interpreter loads, from its own closure run.
+
+    Every mapped file must lie under /usr, except LOADER_CACHE, which is
+    skipped (neither refused nor copied into the rootfs).
+    """
     path, _ = workload_source()
     code, out, err = host.run([PYTHON, "-I", "-B", "-S", path, "closure"], timeout=30)
     require(code == 0, "closure probe failed: " + err.decode("ascii", "replace")[:512])
@@ -221,7 +233,8 @@ def closure_paths(host):
                 "module outside the Rocky python3.9 stdlib: " + name)
         files.add(name)
     for name in report["maps"]:
-        if not name.startswith("/") or name.startswith(("/memfd:", "/dev/")):
+        if (not name.startswith("/") or name.startswith(("/memfd:", "/dev/")) or
+                name == LOADER_CACHE):
             continue
         require(name.startswith("/usr/") and not name.endswith(" (deleted)"),
                 "mapped file outside /usr: " + name)

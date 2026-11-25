@@ -645,7 +645,13 @@ It is a directory built from Rocky's own installed files and started with
 - `manifest` (read-only, usable for Phase 1 facts) runs the workload's own
   `closure` mode under the pinned `/usr/bin/python3.9 -I -B -S` with
   `LC_ALL=C`. That mode exercises the workload's code paths and lists every
-  module file and `/proc/self/maps` file the interpreter loaded. The manifest
+  module file and `/proc/self/maps` file the interpreter loaded. Mapped files
+  must lie under `/usr`; the one exception is the exact path
+  `/etc/ld.so.cache`, which is skipped rather than refused (pl4). It is
+  ldconfig's generated loader cache, not RPM content, and the rootfs works
+  without it (ld.so falls back to its default library paths). Some hosts'
+  loaders keep it mapped (Fedora 45); Rocky's python3.9 does not, so Rocky's
+  manifest digest is unchanged. The manifest
   then adds the usrmerge links (`/lib64` for PT_INTERP) and versioned SONAME
   links. It requires every file to be owned by a package whose
   `FILEDIGESTALGO` is SHA256, with mode, digest and link target equal to the
