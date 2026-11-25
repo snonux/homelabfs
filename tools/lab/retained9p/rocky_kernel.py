@@ -357,7 +357,7 @@ def check_plan_shape(plan):
             not RELEASE.fullmatch(plan["kernel_release"]):
         raise Refused("plan run ID/kernel release")
     if plan["manifest_sha256"] in SUPERSEDED:
-        raise Refused("plan names a superseded xz3 candidate; use the r21 rebuild")
+        raise Refused("plan names a superseded xz3 candidate; use the second r21 rebuild (f21450ec)")
     if plan["manifest_sha256"] in QUARANTINED or plan["manifest_sha256"] not in ADMITTED:
         raise Refused("plan names a candidate manifest that is not admitted")
     stock = plan["stock_default_kernel"]
@@ -424,7 +424,7 @@ def stock_release(plan):
 
 def read_manifest(package, expected):
     if expected in SUPERSEDED:
-        raise Refused("superseded xz3 candidate manifest; use the r21 rebuild")
+        raise Refused("superseded xz3 candidate manifest; use the second r21 rebuild (f21450ec)")
     if expected in QUARANTINED or expected not in ADMITTED:
         raise Refused("candidate manifest is not admitted")
     raw = read_bounded(package / "manifest.json", JSON_LIMIT)

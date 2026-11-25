@@ -48,7 +48,9 @@ changed:
   build stripped to `07c9f5a1…`).
 - **Kernel:** `linux/config` differs from `1428d4db` only in
   `CONFIG_AS_VERSION` and `CONFIG_LD_VERSION` (Kconfig records the binutils
-  version; the operator config fragment is unchanged). The five modules,
+  version; the operator config fragment is unchanged). The new value
+  20285426 comes from binutils 2.47.20260726: `as-version.sh` folds the
+  snapshot date into the number (24601 was 2.46.1). The five modules,
   `abi-negative.json`, `kernel.release` and `modules.*` still came out
   byte-identical to `1428d4db`, with the same GNU build IDs.
 - **Native exporter:** built on f3 with the FreeBSD toolchain as before;
