@@ -289,6 +289,18 @@ ID `f9518177…`, daemon `013515a8…`, bhyve `368a021d…`). The daemon's bytes
 pass the f3 self-check again; the window test files were rebuilt with the
 daemon.
 
+That package never ran. Before zq3-r21, several more fixes landed on main:
+the guest can now ask for a file's details through an open file even after
+the file was renamed or deleted (s64, the `hfs_fdattr` mount option, needed
+in the guest, the patched bhyve and the host), a blocked session hands back
+its unused reservations (hh4), and a few smaller guest and host fixes (dh4,
+vj4, 5f4, wj4). So the package was rebuilt again on 2026-11-24 for the run
+planned on 2026-11-25 (`f21450ec…`, kernel build ID `bd4fa753…`, daemon
+`c7b89648…`, bhyve `8cadae40…`). It is the first package allowed to mount
+with `hfs_fdattr`. The laptop had moved to Fedora 45 that day, so it is also
+the first package built with the newer compilers (Go 1.27.4 instead of
+1.26.10); the daemon must again pass the f3 self-check.
+
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
 written record of every step, not by a fully automatic runner. Right before the

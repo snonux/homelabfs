@@ -154,7 +154,14 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   c04c519f refused a non-owner's walk below the 0700 root because
 #   revalidatePath required search permission on every ancestor (zq3-r20
 #   R20-1, fixed by sj4); its exporter 2fd7e32f fenced its bootstrap on
-#   EAGAIN backend contention (fixed by 9h4).
+#   EAGAIN backend contention (fixed by 9h4);
+# - 1428d4db (the first r21 rebuild, 91b9ee1, never run) predates s64 in
+#   all three parts (no hfs_fdattr), hh4 (a blocked session's stranded
+#   never-prepared claims are never ABANDONed), dh4 (a blocked session's
+#   DRAIN_WRITE/GAP_RESOLVE were halted with the poll), vj4 (a mutating
+#   CALL recalled the requester's own observation leases), 5f4 (a stop
+#   did not wake the view waits) and wj4 (the mmapped mark never ended, so
+#   a view stayed cached and the xf4 advance could not fire again).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -174,21 +181,22 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313",
               "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7",
               "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5",
-              "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec"}
-# The only candidate this controller pins: the xz3 r21 rebuild for zq3-r21
-# (built 2026-11-22 for the run planned on 2026-11-23, source and repository
-# baseline 91b9ee1). The guest kernel was rebuilt for tj4 (the cacheless
-# test counts only mmapped inodes, so a mount with registered roots can send
-# the xf4 advance; c64 recipe,
-# g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4+tj4 patch series,
-# build ID f9518177), the CGO daemon for sj4 (revalidatePath keeps the ancestor
-# identity re-walk but drops the per-ancestor search check, zq3-r20 R20-1),
-# 2h4, 0a4, fh4, a84, l64 and nj4 (013515a8) with the window artifacts, and the
-# native exporter on f3 for 9h4 (the controlled bootstrap retries on EAGAIN
-# backend contention; 368a021d, two clean builds equal). The new daemon bytes
-# still need the f3 observer check.
+              "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec",
+              "1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"}
+# The only candidate this controller pins: the second xz3 r21 rebuild for
+# zq3-r21 (built 2026-11-24 for the run planned on 2026-11-25, source and
+# repository baseline 3081d31 = main a670592 plus the Fedora 45 go1.27.4
+# re-pin). The guest kernel was rebuilt for the guest merges since 91b9ee1
+# (patches 0002-0005: dh4, kn1 tg4/ch4/wj4 2-4, 5f4, s64, hh4, wj4 item 1;
+# c64 recipe, g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4+tj4+dh4+kn1+5f4+s64+hh4+wj4 series, build ID bd4fa753,
+# binutils 2.47; the modules are byte-identical to 1428d4db), the CGO daemon
+# for vj4, dh4, s64 host and hh4 host (c7b89648, go1.27.4) with the window
+# artifacts, and the native exporter on f3 for s64 `_args` and the hh4
+# ABANDON forwarder (8cadae40, two clean builds equal). It is the first
+# candidate in FD_ATTR. The new daemon bytes still need the f3 observer
+# check.
 # Admission here is a dispatch precondition, never deployment eligibility.
-ADMITTED = {"1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"}
+ADMITTED = {"f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106"}
 # Admitted candidates that may mount with `hfs_fdattr` (s64, bl4): GETATTR and
 # SETATTR through the open file description, so fstat/fchmod/fchown/futimens
 # work after a rename or unlink. All three parts must carry s64: the guest
@@ -199,10 +207,11 @@ ADMITTED = {"1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"}
 # (docs/design/s64-fd-attr.md, "Version negotiation"). A pre-s64 guest kernel
 # would not even print the option. So the option is never derived from the
 # tooling's own version: a plan asks for it (`fd_attr`, below) and only a
-# digest listed here may grant it. Empty: the r21 candidate (baseline
-# 91b9ee1) and every superseded one predate s64 (guest and lib9p 1258f5d).
-# The next candidate built from main goes here together with ADMITTED.
-FD_ATTR = frozenset()
+# digest listed here may grant it. The second r21 rebuild (baseline
+# 3081d31) carries s64 in all three parts (guest and lib9p 7f204dc, host
+# 157a132); every superseded candidate, the first r21 rebuild 1428d4db
+# included, predates s64 and must never be added.
+FD_ATTR = frozenset({"f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106"})
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -408,10 +417,12 @@ def require_candidate(manifest_hash):
         # BLOCKED back-off and te4 journal check, the r18 2f4 wait for a
         # not-yet-current grant and the je4/e84 recall scope, the r19 vf4
         # setattr kill bits and wf4 recall scope, the r20 1h4 busy-round
-        # wait and BLOCKED re-check and the xf4 view advance, or the r21 tj4
+        # wait and BLOCKED re-check and the xf4 view advance, the r21 tj4
         # mmapped-only cacheless test, sj4 ancestor walk and 9h4 bootstrap
-        # EAGAIN retry); the comment at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the r21 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry)")
+        # EAGAIN retry, or the second r21 rebuild's s64 hfs_fdattr, hh4
+        # ABANDON, dh4 drain exemption, vj4 own-lease recall and wj4 mmapped
+        # mark end); the comment at SUPERSEDED says which.
+        raise Refused("superseded xz3 candidate: use the r21 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry, first r21 rebuild 1428d4db without s64/hh4 ABANDON/dh4/vj4/wj4)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

@@ -55,16 +55,18 @@ BASELINE = {
                 "-s", FBUF_DEVICE],
     "console": ["-l", "com1,/dev/nmdm-rocky.1A"],
 }
-# Candidate exporter (xz3 r21 rebuild for zq3-r21): rebuilt natively on f3
-# from the 9h4 lib9p sources (the controlled C bootstrap waits out
-# backend-mutex contention, EAGAIN, up to 10 s per call, instead of fencing
-# itself under CPU load) and reproduced in a second clean build. The xd4
-# build 2fd7e32f... (pc4: a failed result read or endpoint check answers
-# ERROR UNAVAILABLE (5); zq3-r12 R12-1, zq3-r13 R13-1), which every
-# candidate from xd4 3a7131dd... through r20 b37bcb06... carried, lacks 9h4;
-# the y64 build ef8f17de... before it lacks pc4, and 36423b6d... before that
-# lacks 564/e64/p64/w64 too.
-EXPORTER_SHA256 = "368a021d2046bf9c2845a4d80345d5665f948bd6136a3a233827505d06a052db"
+# Candidate exporter (second xz3 r21 rebuild for zq3-r21, 2026-11-24):
+# rebuilt natively on f3 from the s64 and hh4 lib9p sources (`_args` routes
+# GETATTR/SETATTR through the open DESCRIPTION for hfs_fdattr; the ABANDON
+# forwarder returns a blocked session's never-prepared claims) and
+# reproduced in a second clean build. The first r21 build 368a021d...
+# (9h4: the controlled C bootstrap waits out EAGAIN backend contention),
+# carried only by the never-run 1428d4db..., lacks s64 and hh4; the xd4
+# build 2fd7e32f... (pc4), which every candidate from xd4 3a7131dd...
+# through r20 b37bcb06... carried, lacks 9h4 too; the y64 build
+# ef8f17de... before it lacks pc4, and 36423b6d... before that lacks
+# 564/e64/p64/w64 too.
+EXPORTER_SHA256 = "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4"
 STAGING_PARENT = "/var/tmp/hfs-validation-xz3"
 GUEST_MEMORY = "6G"
 SHARES = ("hfs0", "hfs1")

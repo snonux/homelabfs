@@ -1,5 +1,15 @@
 # xz3 r21 rebuild (2026-11-22): zq3-r20 ancestor walk fix, xf4 advance trigger and exporter EAGAIN retry
 
+**Superseded on 2026-11-24, never run,** by the
+[second r21 rebuild](../xz3-20261125-r21/README.md) (`f21450ec…`, source
+`3081d31`) for the same run, zq3-r21, now planned on 2026-11-25. Main had
+gained s64 (`hfs_fdattr` in guest kernel, exporter and daemon), hh4
+(ABANDON of a blocked session's stranded claims), dh4, vj4, 5f4, kn1 and
+wj4 item 1, and Paul approved a fresh build. That rebuild is also the first
+on the Fedora 45 toolchain (go1.27.4). The tooling refuses this manifest as
+superseded. It still passes `package.py check` and `admit.py` under the
+`a670592` tooling.
+
 The candidate was built and admitted on 2026-11-22. The `20261123` in its
 directory and evidence names is the planned zq3-r21 run day, chosen in
 advance as r20 did, because pins and the run plan reference it.

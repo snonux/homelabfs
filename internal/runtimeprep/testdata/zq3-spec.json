@@ -11,7 +11,7 @@
   "EnrollmentFile": "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/handoff/enrollment.json",
   "Exporter": {
     "Path": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/bhyve",
-    "SHA256": "368a021d2046bf9c2845a4d80345d5665f948bd6136a3a233827505d06a052db",
+    "SHA256": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4",
     "Args": [
       "-s", "0,hostbridge",
       "-s", "31,lpc",

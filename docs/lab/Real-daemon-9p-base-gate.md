@@ -67,8 +67,10 @@ and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The r17 dae
 `bb4ad73c…` (zq3-r19 candidate `09acd09d…`) passed it in zq3-r19
 ([record](results/20261121-zq3-r19/README.md)). The r20 daemon
 `c04c519f…` (zq3-r20 candidate `b37bcb06…`) passed it in zq3-r20
-([record](results/20261122-zq3-r20/README.md)). The current r21 daemon
-`013515a8…` (zq3-r21 candidate `1428d4db…`) is new bytes and has not been
+([record](results/20261122-zq3-r20/README.md)). The first r21 daemon
+`013515a8…` (candidate `1428d4db…`) never ran. The current daemon
+`c7b89648…` (second r21 rebuild for zq3-r21, candidate `f21450ec…`, built
+with go1.27.4 on Fedora 45) is new bytes and has not been
 checked yet; every run repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
@@ -179,13 +181,32 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r21 rebuild for zq3-r21, built 2026-11-22 for the
-run planned on 2026-11-23) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261123-r21/package`, manifest SHA256
-`1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9`, assembled from source checkout
-and repository baseline `91b9ee1`; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261123-r21/README.md).
-The guest kernel was rebuilt for tj4 (the cacheless test counts only mmapped inodes, so a mount with registered roots can send the xf4 advance; in zq3-r20 it was never sent): `bzImage` `b3f2f72b…`, `vmlinux`
+The current xz3 candidate (second r21 rebuild for zq3-r21, built 2026-11-24
+for the run planned on 2026-11-25) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261125-r21/package`, manifest SHA256
+`f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106`, assembled from source checkout
+and repository baseline `3081d31` (main `a670592` plus the Fedora 45 Go
+re-pin); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261125-r21/README.md).
+It is the first candidate built on Fedora 45 (go1.27.4, binutils 2.47,
+clang 23) and the first in `controller.FD_ATTR`. The guest kernel was
+rebuilt for the guest merges since `91b9ee1` (patches 0002-0005: s64
+`hfs_fdattr`, hh4 ABANDON, dh4, 5f4, kn1 and wj4 item 1): `bzImage`
+`74728cac…`, `vmlinux` `5cb3ef3a…`, GNU build ID `bd4fa753…`, `System.map`
+`debb6bda…`, `config` `692ed3fa…` (only `CONFIG_AS_VERSION` and
+`CONFIG_LD_VERSION` differ from `28fe4a8e…`); two builds at the same O path
+were identical, the five modules came out byte-identical to `1428d4db…`,
+and `Module.symvers` changed only in hfs export CRCs. The CGO daemon was
+rebuilt for vj4, dh4, s64 host and hh4 host: `c7b89648…`, GNU build ID
+`9694935d…`; two forced builds and the window build gave the same bytes, and
+the window artifacts were rebuilt with it (`controlledruntime.test`
+`0129385e…`, `fdescfs-namespace` `2157b861…`). The native exporter was
+rebuilt on f3 for s64 `_args` and the hh4 ABANDON forwarder under the 7e4
+guard recipe: `bhyve` `8cadae40…`, GNU build ID `03b06c86…`; two clean
+builds were equal in all 83 files. The first r21 rebuild (`1428d4db…`,
+source and repository baseline `91b9ee1`, never run;
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261123-r21/README.md))
+is now refused as superseded. In it the guest kernel was rebuilt for tj4 (the cacheless test counts only mmapped inodes, so a mount with registered roots can send the xf4 advance; in zq3-r20 it was never sent): `bzImage` `b3f2f72b…`, `vmlinux`
 `796da1c9…`, GNU build ID `f9518177…`, `System.map` `35111e72…`, `config`
 `28fe4a8e…` unchanged; two builds at the same O path were identical, the
 five modules came out byte-identical, and `Module.symvers` changed only in hfs export CRCs. The CGO daemon was rebuilt
@@ -197,7 +218,7 @@ exporter was rebuilt on f3 for 9h4 (the controlled C bootstrap waits out backend
 The r20 rebuild for zq3-r20 (`b37bcb06…`, source and repository baseline
 `d71ae02`;
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261122-r20/README.md))
-is now refused as superseded. In r20 the guest kernel was rebuilt for 1h4 (a BLOCKED for the expected target is re-checked after a reinstall, and a busy local retirement round is waited for instead of being counted against the re4 retry cap; zq3-r19 R19-1) and 4h4 (xf4 step B: a cacheless observation asks for an advance and adopts the host's current target under a bounded re-check, else releases the grant unadopted, `-EXDEV`): `bzImage` `2b8880a8…`, `vmlinux`
+was refused as superseded then. In r20 the guest kernel was rebuilt for 1h4 (a BLOCKED for the expected target is re-checked after a reinstall, and a busy local retirement round is waited for instead of being counted against the re4 retry cap; zq3-r19 R19-1) and 4h4 (xf4 step B: a cacheless observation asks for an advance and adopts the host's current target under a bounded re-check, else releases the grant unadopted, `-EXDEV`): `bzImage` `2b8880a8…`, `vmlinux`
 `3d3a9424…`, GNU build ID `b4d6cd69…`, `System.map` `c726e252…`, `config`
 `28fe4a8e…` unchanged; two builds at the same O path were identical, the
 five modules came out byte-identical, and `Module.symvers` changed only in
@@ -431,7 +452,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `1428d4db…`,
+The concrete phased proposal for one disposable run with candidate `f21450ec…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

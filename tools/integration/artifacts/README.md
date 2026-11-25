@@ -132,7 +132,15 @@ rebuild for zq3-r21 (candidate `1428d4db…`,
 patches (0003/0004) changed the image (build ID `f9518177…`), while the five
 modules and `abi-negative.json` came out byte-identical (`Module.symvers` changed only in hfs export CRCs). It
 also rebuilt the daemon (sj4 and six more merges) and, for 9h4, the
-exporter on f3 under the same guard recipe (`368a021d…`).
+exporter on f3 under the same guard recipe (`368a021d…`). The second r21
+rebuild for zq3-r21 (candidate `f21450ec…`,
+[evidence](evidence/xz3-20261125-r21/README.md)) is the first built on
+Fedora 45: binutils 2.47 changed only `CONFIG_AS_VERSION` and
+`CONFIG_LD_VERSION` in the config, its patches 0002-0005 (s64, hh4, dh4,
+5f4, kn1, wj4) changed the image (build ID `bd4fa753…`), and the five
+modules and `abi-negative.json` again came out byte-identical. The daemon
+was built with go1.27.4 (`daemon.py` `GO_RELEASE`, re-pinned from go1.26.10
+in `3081d31`) and the exporter rebuilt on f3 for s64 and hh4 (`8cadae40…`).
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
@@ -310,7 +318,10 @@ the r19 rebuild for zq3-r19 at `e160370`
 for zq3-r20 at `d71ae02` ([r20 evidence](evidence/xz3-20261122-r20/README.md)).
 The r21 rebuild for zq3-r21 at `91b9ee1` rebuilt the exporter on f3 under
 `34ddf37c…` again, because 9h4 changed the owned lib9p sources (`368a021d…`,
-[r21 evidence](evidence/xz3-20261123-r21/README.md)).
+[r21 evidence](evidence/xz3-20261123-r21/README.md)). The second r21
+rebuild at `3081d31` rebuilt it again for s64 `_args` and the hh4 ABANDON
+forwarder in `hfs9p.c` (`8cadae40…`,
+[evidence](evidence/xz3-20261125-r21/README.md)).
 Within one sample the walk can still
 miss a file renamed into a directory it has already passed; the guard
 samples repeatedly.
