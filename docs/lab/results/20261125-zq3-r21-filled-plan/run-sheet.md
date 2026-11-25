@@ -1558,8 +1558,10 @@ happened since 09:38Z. **A fusefs or fdescfs mount, or a module state other
 than both loaded: stop** (a plan revision decides). Any other difference also
 stops and revises the plan. A changed vars hash means a new argv record.
 Another f3 boot or Rocky restart means a new boot time, PID and lstart for
-`NG`, `p5-recheck.py` and the sheet (an f3 boot would also unload both
-modules, so Phase 1a would then be skipped with that reason).
+`NG`, `p5-recheck.py` and the sheet: **stop and refill** (fresh Phase 1
+facts, new pins), never continue with this sheet. An f3 boot would also
+unload both modules, which changes D1 and Phase 1a; that is part of the
+refill, not a reason to skip Phase 1a here.
 
 ## Phase 1a: unload the modules zq3-r20 left loaded (A5, D1-a, about 2 min)
 
@@ -1887,10 +1889,13 @@ f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/fdescfs-window.py facts --ins
 f3 doas -n cat /var/tmp/hfs-fdescfs-windows/zq3-r21/owned.json > $E/p5-owned.json
 python3 -I -B $D/sh/p5-recheck.py $E/p5-boottime.txt $E/p5-rocky-lstart.txt $E/p5-facts.json $E/p5-owned.json | tee $E/p5-recheck.json
 f3 'doas -n vm list; swapinfo -k' | tee $E/p5-iom-swap.txt     # r21: every VM but rocky (iom1-3, any iormesh k3s VM) must show Stopped; swap 0 used (no Phase 0b this run; Phase 6 decides)
+f3 'doas -n ls /dev/vmm' | tee $E/p5-vmm.txt     # r21: must list exactly rocky (catches a VM vm-bhyve does not manage)
 # ==== END Phase-5 block 2 ====
 ```
 
-r21: if any iormesh VM (iom1-3 or a k3s test VM) is not `Stopped`, this is a
+r21: if any iormesh VM (iom1-3 or a k3s test VM) is not `Stopped`, or
+`/dev/vmm` lists anything besides `rocky` (a bhyve VM that vm-bhyve does
+not manage, such as an iormesh one, would not show in `vm list`), this is a
 failed recheck: stop before step 2 (nothing is selected yet; abort as for a
 failed step 1 below) and coordinate with the iormesh session; never stop or
 start it from this sheet (the memory bar assumes them all stopped).
