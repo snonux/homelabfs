@@ -257,30 +257,71 @@ def link_paths(files):
     return links
 
 
+def usrmerge_aliases(paths):
+    """Merged-usr alias row name -> rootfs path, e.g. /lib64/X -> /usr/lib64/X (pl4).
+
+    Some packages list a file under the top-level alias instead of /usr
+    (Fedora 45's libgcc: /lib64/libgcc_s-*.so.1). That row names the same
+    file only where the host's /X is the usrmerge symlink to usr/X, so the
+    alias is offered for exactly those top-level directories and no others.
+    """
+    aliases = {}
+    for top in TOP_LINKS:
+        link = source("/" + top)
+        if not (os.path.islink(link) and os.readlink(link) == "usr/" + top):
+            continue
+        prefix = "/usr/" + top + "/"
+        for path in paths:
+            if path.startswith(prefix):
+                aliases["/" + top + "/" + path[len(prefix):]] = path
+    return aliases
+
+
+def package_rows(host, nevra):
+    """Signed-package record and (name, (mode, digest, link)) file rows of nevra."""
+    code, header, _ = host.run(["rpm", "-q", "--qf", RPM_HEADER, nevra], 60)
+    algo, vendor, signature = (header.decode().rstrip("\n").split("\t") + ["", "", ""])[:3]
+    require(code == 0 and algo == "8", "package without SHA256 file digests: " + nevra)
+    # The attestation means "equal to a signed installed package"; an
+    # unsigned (locally built or rebuilt) package does not qualify.
+    require(signature.strip() not in ("", "(none)"), "unsigned package: " + nevra)
+    code, rows, _ = host.run(["rpm", "-q", "--qf", RPM_FILES, nevra], 60)
+    require(code == 0, "rpm file list failed: " + nevra)
+    parsed = []
+    for row in rows.decode().splitlines():
+        fields = row.split("\t")
+        require(len(fields) == 4, "unexpected rpm row: " + nevra)
+        name, mode, sha, target = fields
+        parsed.append((name, (int(mode), sha, target)))
+    return {"nevra": nevra, "vendor": vendor, "signature": signature}, parsed
+
+
 def rpm_table(host, paths):
-    """RPM database rows (mode, digest, link) for every package owning paths."""
+    """RPM database rows (mode, digest, link) for every package owning paths.
+
+    A path's own row always wins. Only when no owning package lists the /usr
+    path itself is a usrmerge alias row used (usrmerge_aliases), so every
+    input the pre-pl4 rule accepted yields the identical table. The alias row
+    is then attested exactly like a direct one (mode, digest, link target).
+    """
     code, out, err = host.run(["rpm", "-qf", "--qf", "%{NEVRA}\n", "--", *sorted(paths)], 120)
     require(code == 0, "file not owned by an installed package: " +
             (out + err).decode("ascii", "replace")[:512])
-    table, packages = {}, []
+    aliases = usrmerge_aliases(paths)
+    table, alias_rows, packages = {}, {}, []
     for nevra in sorted(set(out.decode().split())):
-        code, header, _ = host.run(["rpm", "-q", "--qf", RPM_HEADER, nevra], 60)
-        algo, vendor, signature = (header.decode().rstrip("\n").split("\t") + ["", "", ""])[:3]
-        require(code == 0 and algo == "8", "package without SHA256 file digests: " + nevra)
-        # The attestation means "equal to a signed installed package"; an
-        # unsigned (locally built or rebuilt) package does not qualify.
-        require(signature.strip() not in ("", "(none)"), "unsigned package: " + nevra)
-        packages.append({"nevra": nevra, "vendor": vendor, "signature": signature})
-        code, rows, _ = host.run(["rpm", "-q", "--qf", RPM_FILES, nevra], 60)
-        require(code == 0, "rpm file list failed: " + nevra)
-        for row in rows.decode().splitlines():
-            fields = row.split("\t")
-            require(len(fields) == 4, "unexpected rpm row: " + nevra)
-            name, mode, sha, target = fields
+        package, rows = package_rows(host, nevra)
+        packages.append(package)
+        for name, record in rows:
             if name in paths:
-                record = (int(mode), sha, target)
                 require(table.setdefault(name, (nevra, record))[1] == record,
                         "packages disagree about " + name)
+            elif name in aliases:
+                alias_rows.setdefault(aliases[name], []).append((nevra, record))
+    for path, rows in sorted(alias_rows.items()):
+        if path not in table:  # Consulted only when the /usr row is missing.
+            require(len({record for _, record in rows}) == 1, "packages disagree about " + path)
+            table[path] = rows[0]
     return table, packages
 
 
