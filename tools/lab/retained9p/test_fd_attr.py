@@ -46,8 +46,8 @@ rocky_kernel = test_bootstrap.module("rocky_kernel_fd_attr", "rocky_kernel.py")
 ROW = "{} 1 0:{} / {} rw,relatime - 9p {} {}\n"
 bootstrap_module = test_bootstrap.bootstrap
 # Package digests of the s64 fixture candidates' daemon and exporters. DAEMON
-# is plan_fixture's runtime.sha256; the R21 pair is the pre-s64 r21 candidate
-# (zq3-run-plan.md's pin table), which an s64 plan must never run.
+# is plan_fixture's runtime.sha256; the R21 pair is the pre-s64 first r21
+# rebuild 1428d4db (its evidence README), which an s64 plan must never run.
 DAEMON, EXPORTER, EXPORTER_B = "5" * 64, "6" * 64, "8" * 64
 R21_DAEMON = "013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200"
 R21_EXPORTER = "368a021d2046bf9c2845a4d80345d5665f948bd6136a3a233827505d06a052db"
@@ -82,11 +82,14 @@ class ControllerPlanTests(unittest.TestCase):
             plan["requests"] = [with_fd_attr(request) for request in plan["requests"]]
         return plan
 
-    def test_no_candidate_carries_s64_yet(self):
-        # The r21 candidate predates s64; nothing superseded may ever be added.
-        self.assertEqual(controller.FD_ATTR, frozenset())
+    def test_only_the_admitted_candidate_carries_s64(self):
+        # The second r21 rebuild carries s64 in all three parts and is the
+        # one FD_ATTR digest; every superseded candidate (the first r21
+        # rebuild 1428d4db included) predates s64 and may never be added.
+        self.assertEqual(controller.FD_ATTR, frozenset({ADMITTED}))
         self.assertTrue(controller.FD_ATTR <= controller.ADMITTED)
-        for value in [ADMITTED, *SUPERSEDED]:
+        controller.require_fd_attr(ADMITTED)
+        for value in SUPERSEDED:
             with self.subTest(candidate=value), self.assertRaises(controller.Refused):
                 controller.require_fd_attr(value)
 
@@ -94,7 +97,10 @@ class ControllerPlanTests(unittest.TestCase):
         controller.validate_shape(self.plan(fd_attr=None, requests=False))
 
     def test_fd_attr_plan_refuses_a_pre_s64_candidate(self):
-        with self.assertRaisesRegex(controller.Refused, "predates s64"):
+        # The fixture plan names ADMITTED, which is now in FD_ATTR; an empty
+        # FD_ATTR stands for an admitted candidate that predates s64.
+        with mock.patch.object(controller, "FD_ATTR", frozenset()), \
+                self.assertRaisesRegex(controller.Refused, "predates s64"):
             controller.validate_shape(self.plan())
 
     def test_fd_attr_plan_validates_for_an_s64_candidate(self):
@@ -360,6 +366,12 @@ class BootstrapPlanTests(test_bootstrap.Case):
         self.assertTrue(all("--fd-attr" not in options for options in self.mount_args()))
 
     def test_pre_s64_candidate_refuses_before_launch(self):
+        # ADMITTED is in FD_ATTR now; with FD_ATTR emptied it stands for an
+        # admitted pre-s64 candidate, next to the superseded 1428d4db.
+        with mock.patch.object(test_bootstrap.bootstrap.controller, "FD_ATTR", frozenset()):
+            self.pre_s64_candidates_refuse()
+
+    def pre_s64_candidates_refuse(self):
         for number, value in enumerate([ADMITTED, SUPERSEDED[-1], "a" * 64, "nothex"]):
             with self.subTest(value=value):
                 root = self.root / str(number)

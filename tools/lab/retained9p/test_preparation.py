@@ -27,8 +27,8 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-# xz3 r21 rebuild for zq3-r21 (built 2026-11-22); see controller.ADMITTED.
-ADMITTED = "1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"
+# Second xz3 r21 rebuild for zq3-r21 (built 2026-11-24); see controller.ADMITTED.
+ADMITTED = "f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106"
 # e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel), r54
 # (pre-w54 guest kernel, failed-bind kill_sb oops), w54 (pre-z54 daemon,
 # pre-acquire VIEW_POLL left unanswered), z54 (pre-964 guest kernel, fixed
@@ -57,7 +57,8 @@ ADMITTED = "1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"
 # (pre-1h4 kernel that counted a busy retirement round against its BLOCKED
 # retry cap, zq3-r19 R19-1) and r20 (pre-tj4 kernel that never sent the xf4
 # advance, pre-sj4 daemon that refused a walk below the 0700 root, zq3-r20
-# R20-1).
+# R20-1) and the first r21 rebuild 1428d4db (pre-s64, pre-hh4/dh4/vj4/wj4,
+# never run).
 SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -77,7 +78,8 @@ SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313",
               "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7",
               "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5",
-              "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec")
+              "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec",
+              "1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9")
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -368,7 +370,8 @@ class PreparationTests(unittest.TestCase):
         # 2f4 wait for a not-yet-current grant; r18: the r19 vf4 setattr
         # kill bits; r19: the r20 1h4 busy-round wait and xf4 view advance;
         # r20: the r21 tj4 cacheless test, sj4 ancestor walk and 9h4
-        # bootstrap EAGAIN retry).
+        # bootstrap EAGAIN retry; 1428d4db: the second r21 rebuild's s64,
+        # hh4 ABANDON, dh4, vj4 and wj4 fixes).
         # They must refuse distinctly from an unknown digest.
         for value in SUPERSEDED:
             with self.subTest(candidate=value), \

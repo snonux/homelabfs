@@ -87,7 +87,7 @@ of run ID, sessions, tap and the UEFI vars hash; `validate_record` rebuilds it
 and refuses any edited field. `verify` refuses a runtime config whose
 `Exporter.Args` differ in any element or order, whose `Exporter.Path` is not
 `<staging>/bin/bhyve`, or whose `Exporter.SHA256` (32 numbers in Go's JSON) is
-not the candidate bhyve `368a021d…` (r21 rebuild with 9h4; `2fd7e32f…` from xd4 with pc4, `ef8f17de…` from y64 and `36423b6d…` before it). **Contract for the G2 config generator:**
+not the candidate bhyve `8cadae40…` (second r21 rebuild with s64 and hh4; `368a021d…` from the first r21 rebuild with 9h4, `2fd7e32f…` from xd4 with pc4, `ef8f17de…` from y64 and `36423b6d…` before it). **Contract for the G2 config generator:**
 copy `args` verbatim and run `verify` before staging.
 
 `setup` re-collects the facts and refuses if anything drifted since the record
