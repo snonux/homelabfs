@@ -21,11 +21,11 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 r22 rebuild for zq3-r22 (2c85b230), reused byte
-# for byte from the second r21 rebuild f21450ec: built from 3081d31 with the
-# Fedora 45 go1.27.4 (vj4, dh4, s64 host, hh4 host; on top of the sj4 daemon
-# 013515a8 that 1428d4db carried); the window build reproduced it.
-ADMITTED_DAEMON_SHA256 = "c7b896484c6dcb4fe23b6484fdfc4d71a56a16e9bff4b7410e430a0a3cea667e"
+# Daemon of the admitted xz3 r23 rebuild for zq3-r23 (21c49a55), built from
+# 21d8478 with the Fedora 45 go1.27.4 (km4: a domain-wide VIEW_RETIRE refusal
+# is answered BLOCKED; on top of the vj4/dh4/s64/hh4 daemon c7b89648 that
+# f21450ec and 2c85b230 carried); the window build reproduced it.
+ADMITTED_DAEMON_SHA256 = "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
 FUSEFS_SHA256 = "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
@@ -95,14 +95,14 @@ class FillerTests(unittest.TestCase):
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt from
-        # 3081d31 for the second r21 rebuild on 2026-11-24, reused by r22 (earlier from
-        # 91b9ee1 for the first r21 rebuild, from d71ae02 for r20, from e160370 for r19, from 633509e for r18, from 3430758 for r17, from 2f34b60 for r15, reused by r16, from b7d107b for xc4, reused by xd4, from
+        # 21d8478 for the r23 rebuild on 2026-11-26 (earlier from 3081d31 for
+        # the second r21 rebuild, reused by r22, from 91b9ee1 for the first r21 rebuild, from d71ae02 for r20, from e160370 for r19, from 633509e for r18, from 3430758 for r17, from 2f34b60 for r15, reused by r16, from b7d107b for xc4, reused by xd4, from
         # 1b0a306 for 5a4, from dfdcdd9 for b94,
         # from cc6beed for r84, from e92eaa1 for l84, from b869710 for y64,
         # from 060dea0 for c64+d64, from a20aca1 for z54, reused by 964, and
         # from defd974 for f44, reused by r54 and w54), so the qualification
         # test bytes match the daemon source.
-        self.assertEqual(record["source_commit"], "3081d31cb035aaf72730e0d52d2598602117ebbc")
+        self.assertEqual(record["source_commit"], "21d84783fccfc85a00a9b3c365b0cff0e73e627b")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):
         plan = self.fill()

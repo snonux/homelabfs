@@ -68,11 +68,13 @@ and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The r17 dae
 ([record](results/20261121-zq3-r19/README.md)). The r20 daemon
 `c04c519f…` (zq3-r20 candidate `b37bcb06…`) passed it in zq3-r20
 ([record](results/20261122-zq3-r20/README.md)). The first r21 daemon
-`013515a8…` (candidate `1428d4db…`) never ran. The current daemon
-`c7b89648…` (built with go1.27.4 on Fedora 45 for the second r21 rebuild,
-candidate `f21450ec…`, and reused byte for byte by the r22 rebuild,
-candidate `2c85b230…`) passed it in zq3-r21
-([record](results/20261126-zq3-r21/README.md)); every run repeats the check. f3-host descriptor execution still awaits the
+`013515a8…` (candidate `1428d4db…`) never ran. The daemon `c7b89648…`
+(built with go1.27.4 on Fedora 45 for the second r21 rebuild, candidate
+`f21450ec…`, and reused byte for byte by the r22 rebuild, candidate
+`2c85b230…`) passed it in zq3-r21
+([record](results/20261126-zq3-r21/README.md)). The current daemon
+`43238fe9…` (km4, rebuilt for the r23 rebuild, candidate `21c49a55…`) has
+not been checked yet; zq3-r23 must check it, and every run repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
@@ -182,14 +184,23 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r22 rebuild for zq3-r22, built 2026-11-26) is
-retained at `/home/paul/tmp/claude/hfs-xz3-20261126-r22/package`, manifest
-SHA256 `2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e`,
-assembled from source checkout `de9df35` with repository baseline `3081d31`
-(the reused daemon's build revision; `inputs/repository-changes.patch`
-holds the 6m4 diff); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261126-r22/README.md).
-Only the guest kernel was rebuilt, for 6m4 (call and view-ticket charges
+The current xz3 candidate (r23 rebuild for zq3-r23, built 2026-11-26) is
+retained at `/home/paul/tmp/claude/hfs-xz3-20261126-r23/package`, manifest
+SHA256 `21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3`,
+assembled from source checkout and repository baseline `21d8478`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261126-r23/README.md).
+km4 (zq3-r22 R22-1) changed the daemon and the guest kernel, so both were
+rebuilt: the CGO daemon `43238fe9…` (a domain-wide VIEW_RETIRE refusal is
+answered BLOCKED) with the window artifacts, and the kernel (patch 0003
+logs each retire-and-retry round): `bzImage` `049b1367…`, `vmlinux`
+`1aa83d82…`, GNU build ID `2435216f…`, `System.map` `1a80593f…`; `config`
+`692ed3fa…`, `Module.symvers` `b68cf94a…` and the five modules are
+byte-identical to `2c85b230…`, and two builds at the same O path were
+identical. The exporter `8cadae40…` is reused byte for byte from the r22
+rebuild (`2c85b230…`, source `de9df35`, repository baseline `3081d31`;
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261126-r22/README.md)),
+which zq3-r22 ran and which is now refused as superseded. In it only the
+guest kernel was rebuilt, for 6m4 (call and view-ticket charges
 reserve all parts together and retire across every session of the provider
 before one retry; zq3-r21 R21-1): `bzImage` `f51aff35…`, `vmlinux`
 `95a7e7fe…`, GNU build ID `c34dc6fb…`, `System.map` `c710fd4c…`, `config`
@@ -465,7 +476,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `2c85b230…`,
+The concrete phased proposal for one disposable run with candidate `21c49a55…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

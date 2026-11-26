@@ -1,5 +1,18 @@
 # xz3 r22 rebuild (2026-11-26): 6m4 cross-session retire before ENOSPC
 
+**Superseded on 2026-11-26** by the [r23 rebuild](../xz3-20261126-r23/README.md)
+(`21c49a55…`, source `21d8478`) for zq3-r23. zq3-r22 ran this candidate on
+2026-11-26, and T1 failed with R22-1. Its daemon `c7b89648…` refused a
+`VIEW_RETIRE` beside another process's observation lease with a bare
+`WouldBlock` that was never answered. The guest timed out (-110) while it
+held its retirement, and T1's create failed with ENOSPC. km4 fixed this in
+the daemon, which now answers BLOCKED, and added a retire-and-retry log line
+to the guest kernel. r23 rebuilt the kernel, the daemon and the window
+artifacts, and reused this candidate's exporter `8cadae40…` byte for byte.
+The tooling now refuses this manifest as superseded, and `FD_ATTR` holds
+`21c49a55…` instead. This manifest still passes `package.py check` and
+`admit.py` under the `21d8478` tooling.
+
 This candidate supersedes the [second r21 rebuild](../xz3-20261125-r21/README.md)
 (`f21450ec…`, source `3081d31`). zq3-r21 ran it on 2026-11-26.
 [R21-1](../../../../../docs/lab/results/20261126-zq3-r21/README.md) stopped

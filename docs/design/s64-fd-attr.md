@@ -7,10 +7,11 @@ no change. The guest kernel (patch 0003) and lib9p forwarder changes are
 implemented as specified below and compiled, with local harness tests
 (see "Guest and forwarder tests" at the end). They have not run in a guest
 or the lab. The lab tooling (bl4) sets `hfs_fdattr` only for a candidate
-listed in `controller.py` `FD_ATTR`, which holds the r22 rebuild
-`2c85b230…` (the 6m4 kernel with the s64 exporter and daemon of the second
-r21 rebuild `f21450ec…`, the first candidate with all three s64 parts, now
-superseded; see "Lab tooling" at the end).
+listed in `controller.py` `FD_ATTR`, which holds the r23 rebuild
+`21c49a55…` (the km4 kernel and daemon with the s64 exporter of the second
+r21 rebuild `f21450ec…`, the first candidate with all three s64 parts; it
+and the r22 rebuild `2c85b230…` are now superseded; see "Lab tooling" at
+the end).
 
 ## Problem
 

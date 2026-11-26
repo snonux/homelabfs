@@ -57,11 +57,11 @@ PHYSICAL_CONTRACT = "homelabfs-stop-adoption/1"
 ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # Same pins as controller.py (this file is staged alone on Rocky, so it
 # cannot import them; a local test asserts they stay equal).
-# r22 rebuild for zq3-r22 (built 2026-11-26 from de9df35, baseline 3081d31):
-# the 6m4 guest kernel (build ID c34dc6fb, c64 recipe,
-# g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4+tj4+dh4+kn1+5f4+s64+hh4+wj4+6m4
-# series, Fedora 45 binutils), with the vj4/dh4/s64/hh4 daemon c7b89648
-# (go1.27.4) and the s64/hh4 exporter 8cadae40 reused from f21450ec.
+# r23 rebuild for zq3-r23 (built 2026-11-26 from 21d8478, also the baseline):
+# the km4 guest kernel (build ID 2435216f, c64 recipe,
+# g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4+tj4+dh4+kn1+5f4+s64+hh4+wj4+6m4+km4
+# series, Fedora 45 binutils) and the km4 daemon 43238fe9 (go1.27.4), with
+# the s64/hh4 exporter 8cadae40 reused from 2c85b230.
 # Superseded candidates refuse distinctly: e0cca0c cannot arm the d44
 # MKDIR-only lost reply, f44 (defd974) has the pre-r54 guest kernel whose
 # hfs1.4 mounts return EPROTO, r54 (ca920a2) has the pre-w54 guest kernel that
@@ -106,10 +106,13 @@ ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # (d71ae02) has the pre-tj4 guest kernel, which never sent the xf4 advance,
 # and the pre-sj4 daemon, which refused a non-owner's walk below the 0700
 # root (zq3-r20 R20-1), and the first r21 rebuild 1428d4db (91b9ee1, never
-# run) predates s64, hh4, dh4, vj4, 5f4 and wj4 item 1, and the second r21
+# run) predates s64, hh4, dh4, vj4, 5f4 and wj4 item 1, the second r21
 # rebuild f21450ec (3081d31) has the pre-6m4 guest kernel, which charged
 # completion and view packages without retiring and retired only the
-# caller's session, so T1's fchmod failed ENOSPC (zq3-r21 R21-1).
+# caller's session, so T1's fchmod failed ENOSPC (zq3-r21 R21-1), and the
+# r22 rebuild 2c85b230 (de9df35) has the pre-km4 daemon, which never
+# answered a VIEW_RETIRE held by another process's observation lease, so the
+# guest timed out (-110) and T1's create failed ENOSPC (zq3-r22 R22-1).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -131,8 +134,9 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5",
               "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec",
               "1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9",
-              "f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106"}
-ADMITTED = {"2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e"}
+              "f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106",
+              "2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e"}
+ADMITTED = {"21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3"}
 QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"}
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 BUILD_ID = re.compile(r"[0-9a-f]{16,128}\Z")  # Same bound as probe/installed.py.
@@ -361,7 +365,7 @@ def check_plan_shape(plan):
             not RELEASE.fullmatch(plan["kernel_release"]):
         raise Refused("plan run ID/kernel release")
     if plan["manifest_sha256"] in SUPERSEDED:
-        raise Refused("plan names a superseded xz3 candidate; use the r22 rebuild (2c85b230)")
+        raise Refused("plan names a superseded xz3 candidate; use the r23 rebuild (21c49a55)")
     if plan["manifest_sha256"] in QUARANTINED or plan["manifest_sha256"] not in ADMITTED:
         raise Refused("plan names a candidate manifest that is not admitted")
     stock = plan["stock_default_kernel"]
@@ -428,7 +432,7 @@ def stock_release(plan):
 
 def read_manifest(package, expected):
     if expected in SUPERSEDED:
-        raise Refused("superseded xz3 candidate manifest; use the r22 rebuild (2c85b230)")
+        raise Refused("superseded xz3 candidate manifest; use the r23 rebuild (21c49a55)")
     if expected in QUARANTINED or expected not in ADMITTED:
         raise Refused("candidate manifest is not admitted")
     raw = read_bounded(package / "manifest.json", JSON_LIMIT)
