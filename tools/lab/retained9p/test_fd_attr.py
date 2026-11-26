@@ -83,10 +83,11 @@ class ControllerPlanTests(unittest.TestCase):
         return plan
 
     def test_only_the_admitted_candidate_carries_s64(self):
-        # The r22 rebuild carries s64 in all three parts and is the one
+        # The r23 rebuild carries s64 in all three parts and is the one
         # FD_ATTR digest. Every superseded candidate refuses: the second r21
-        # rebuild f21450ec carried s64 but is superseded (R21-1), and every
-        # older one (the first r21 rebuild 1428d4db included) predates s64.
+        # rebuild f21450ec and the r22 rebuild 2c85b230 carried s64 but are
+        # superseded (R21-1, R22-1), and every older one (the first r21
+        # rebuild 1428d4db included) predates s64.
         self.assertEqual(controller.FD_ATTR, frozenset({ADMITTED}))
         self.assertTrue(controller.FD_ATTR <= controller.ADMITTED)
         controller.require_fd_attr(ADMITTED)
@@ -369,12 +370,13 @@ class BootstrapPlanTests(test_bootstrap.Case):
     def test_pre_s64_candidate_refuses_before_launch(self):
         # ADMITTED is in FD_ATTR now; with FD_ATTR emptied it stands for an
         # admitted pre-s64 candidate, next to the superseded pre-s64
-        # 1428d4db (SUPERSEDED[-2]; the last entry, f21450ec, has s64).
+        # 1428d4db (SUPERSEDED[-3]; the last two entries, f21450ec and
+        # 2c85b230, have s64).
         with mock.patch.object(test_bootstrap.bootstrap.controller, "FD_ATTR", frozenset()):
             self.pre_s64_candidates_refuse()
 
     def pre_s64_candidates_refuse(self):
-        for number, value in enumerate([ADMITTED, SUPERSEDED[-2], "a" * 64, "nothex"]):
+        for number, value in enumerate([ADMITTED, SUPERSEDED[-3], "a" * 64, "nothex"]):
             with self.subTest(value=value):
                 root = self.root / str(number)
                 root.mkdir()

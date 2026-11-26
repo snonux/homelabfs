@@ -239,7 +239,13 @@ toolchain (go1.27.4, clang 23): the helper source is unchanged, but its code
 changed with the compiler (stripped `7872b1b4…`, `07c9f5a1…` for every
 Fedora 44 build). The r22 rebuild for zq3-r22 (`2c85b230…`, 2026-11-26)
 rebuilt only the guest kernel (6m4) and reused that daemon, so these
-artifacts and their pins are unchanged.
+artifacts and their pins stayed unchanged. The r23 rebuild for zq3-r23
+(`21c49a55…`, 2026-11-26) rebuilt them from `21d8478`: km4 changed
+`internal/controlledruntime` (the test binary itself) and
+`internal/viewcontrol`, which it links, so the test binary is now
+`d58fedc4…` and the cross-built daemon equals the new candidate daemon
+`43238fe9…`. The helper `6d54858c…` differs only in DWARF (the new
+out_dir); stripped it is still `7872b1b4…`.
 Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.

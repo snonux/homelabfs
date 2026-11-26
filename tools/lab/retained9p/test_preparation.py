@@ -27,8 +27,8 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-# xz3 r22 rebuild for zq3-r22 (built 2026-11-26); see controller.ADMITTED.
-ADMITTED = "2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e"
+# xz3 r23 rebuild for zq3-r23 (built 2026-11-26); see controller.ADMITTED.
+ADMITTED = "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3"
 # e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel), r54
 # (pre-w54 guest kernel, failed-bind kill_sb oops), w54 (pre-z54 daemon,
 # pre-acquire VIEW_POLL left unanswered), z54 (pre-964 guest kernel, fixed
@@ -58,8 +58,10 @@ ADMITTED = "2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e"
 # retry cap, zq3-r19 R19-1) and r20 (pre-tj4 kernel that never sent the xf4
 # advance, pre-sj4 daemon that refused a walk below the 0700 root, zq3-r20
 # R20-1), the first r21 rebuild 1428d4db (pre-s64, pre-hh4/dh4/vj4/wj4,
-# never run) and the second r21 rebuild f21450ec (pre-6m4 kernel, T1's
-# fchmod failed ENOSPC, zq3-r21 R21-1).
+# never run), the second r21 rebuild f21450ec (pre-6m4 kernel, T1's
+# fchmod failed ENOSPC, zq3-r21 R21-1) and the r22 rebuild 2c85b230
+# (pre-km4 daemon, an unanswered held VIEW_RETIRE, T1's create failed
+# ENOSPC, zq3-r22 R22-1).
 SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -81,7 +83,8 @@ SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5",
               "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec",
               "1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9",
-              "f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106")
+              "f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106",
+              "2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e")
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -374,7 +377,8 @@ class PreparationTests(unittest.TestCase):
         # r20: the r21 tj4 cacheless test, sj4 ancestor walk and 9h4
         # bootstrap EAGAIN retry; 1428d4db: the second r21 rebuild's s64,
         # hh4 ABANDON, dh4, vj4 and wj4 fixes; f21450ec: the r22 6m4
-        # cross-session retire before ENOSPC).
+        # cross-session retire before ENOSPC; 2c85b230: the r23 km4 BLOCKED
+        # answer to a held VIEW_RETIRE).
         # They must refuse distinctly from an unknown digest.
         for value in SUPERSEDED:
             with self.subTest(candidate=value), \

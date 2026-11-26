@@ -148,6 +148,13 @@ the same nine hfs exports. The five modules and `abi-negative.json` again
 came out byte-identical. It reused the `3081d31` daemon `c7b89648…` and the
 exporter `8cadae40…` byte for byte, so its repository baseline is `3081d31`
 with `inputs/repository-changes.patch` (the r16 method).
+The r23 rebuild for zq3-r23 (candidate `21c49a55…`,
+[evidence](evidence/xz3-20261126-r23/README.md)) kept that config too; km4's
+patch 0003 log line changed the image (build ID `2435216f…`) but no export
+CRC, so `Module.symvers`, the five modules and `abi-negative.json` came out
+byte-identical. km4 also changed the daemon, so it was rebuilt at `21d8478`
+(`43238fe9…`, go1.27.4), which is the repository baseline, and only the
+exporter `8cadae40…` was reused.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

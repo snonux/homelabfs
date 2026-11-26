@@ -311,8 +311,20 @@ guest kernel: it now cleans up across all mounts before it gives up, then
 retries once. Only the kernel changed, so on 2026-11-26 the package was
 rebuilt for zq3-r22 with just a new kernel (`2c85b230…`, kernel build ID
 `c34dc6fb…`). The daemon (`c7b89648…`, which already passed the self-check)
-and bhyve (`8cadae40…`) are the same files as before. It is the package now
-allowed to mount with `hfs_fdattr`.
+and bhyve (`8cadae40…`) are the same files as before.
+
+zq3-r22 ran that package on 2026-11-26. T1 failed again with ENOSPC, but
+for a different reason. One mount asked the daemon to hand back a finished
+view while another program still watched the same files. The daemon said
+"not now" in a way nobody ever answered, so the mount waited 30 s while it
+held its cleanup lock, and the file create behind it ran out of space. km4
+fixed this in the daemon, which now answers "blocked, try later" at once.
+It also added a log line to the guest kernel each time the kernel cleans up
+and retries. Both parts changed, so on 2026-11-26 the package was rebuilt
+for zq3-r23 with a new kernel and a new daemon (`21c49a55…`, kernel build ID
+`2435216f…`, daemon `43238fe9…`). bhyve (`8cadae40…`) is the same file as
+before. The new daemon must pass the f3 self-check again. It is the package
+now allowed to mount with `hfs_fdattr`.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
