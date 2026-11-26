@@ -1,0 +1,540 @@
+{
+ "argv_record": {
+  "args": [
+   "-s",
+   "0,hostbridge",
+   "-s",
+   "31,lpc",
+   "-s",
+   "0:4:0,nvme,/zroot/bhyve/rocky/disk0.img",
+   "-s",
+   "0:5:0,virtio-net,tap100,mac=58:9c:fc:4c:38:84",
+   "-c",
+   "4",
+   "-m",
+   "6G",
+   "-AHPw",
+   "-l",
+   "bootrom,/usr/local/share/uefi-firmware/BHYVE_UEFI.fd,/var/tmp/hfs-validation-xz3/zq3-r23/launch/uefi-vars.fd",
+   "-s",
+   "0:7:0,virtio-9p",
+   "-o",
+   "pci.0.7.0.sharename=hfs0",
+   "-o",
+   "pci.0.7.0.hfs-controller=a19f095f-c12c-410e-b5f2-c1cb11ca6eca",
+   "-s",
+   "0:8:0,virtio-9p",
+   "-o",
+   "pci.0.8.0.sharename=hfs1",
+   "-o",
+   "pci.0.8.0.hfs-controller=227cf32d-2cba-4a71-9dbb-7ea4a731dd48",
+   "-U",
+   "e10b6225-44d0-11f1-882a-e8ff1ed7f3d7",
+   "-u",
+   "-l",
+   "com1,/dev/nmdm-hfs-zq3-r23.1A",
+   "hfs-zq3-r23"
+  ],
+  "args_sha256": "78b9f97c5e06cdc453a9ad9b0fd9dac91c92a1e8eab9c5f48602f47c23cb86f1",
+  "argv_verify": "pass",
+  "check_argv": "pass",
+  "exporter": {
+   "path": "/var/tmp/hfs-validation-xz3/zq3-r23/bin/bhyve",
+   "sha256": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4"
+  },
+  "facts_sha256": "38b9a414e3c3de74e50a813bf2807a6dc3c7a62dfa3ef548e65a2b4abcee7ec5",
+  "note": "generated from the 20261126T201519Z launch facts (tap100); the UEFI vars are those after zq3-r22's Phase 12 start (14:51Z); any later Rocky boot changes them",
+  "path": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/argv/bhyve-argv.json",
+  "record_sha256": "d19bc90202140d9c8b1fa84d89a79fad759b71e537137008752e93ab762d8422",
+  "tap": "tap100",
+  "uefi_vars_sha256": "4f63d71bbf0b44279ef1588865f659c1b09d818dfe9e007df8d6f3450fb1d375"
+ },
+ "authority": "none: hashes/paths/argv for Paul's review; every A-class step still needs Paul's explicit final GO",
+ "bootstrap": {
+  "F1_observer_ssh_sha256": "6a9e5573eda7dfaef1addf1b199872fe41af2027ef19430d4aa7e0a7919a369b",
+  "F1_source": "facts/f3-usr-bin-ssh-20261126T201519Z.sha256, filled by fill_plan.py bootstrap; Phase 4 step 0 rechecks it",
+  "bootstrap_py_sha256": "b871412040a080ab231ea031cfe522818e574dd7c4f1058041059c086252b9cf",
+  "filled_plan": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bootstrap/bootstrap-plan.json",
+  "filled_plan_check": "pass (bootstrap.py check, fd_attr fields included)",
+  "filled_plan_sha256": "67c551f3194225b3c65e53310b85ae3d2419d7c24632e79a2e8a2ab1cba27ea0",
+  "guard_script_sha256": "fece96b3a42043a7434ee37fc0c38464addabe0eb2ba618d2fc54aafaa1f457e",
+  "journal_version": "homelabfs-zq3-bootstrap-journal/3",
+  "kernel_plan_sha256": "dda355cfba97e8a0ca11d89d2ab01a61e6d3802be8ca5d537a4c9a16c487fb3f",
+  "kernel_script_sha256": "e99d91b88722a682d16d64f4cf3dfbfeaf339a0c8c11f0ffe2a17beeea5e295b",
+  "prep_config_sha256": "80188fb7ed268419dae3c0d00de60db44ce3d0c2fd5a1ac1d04285d1e7369f3a",
+  "prep_sha256": "63fa89c6ed4c6d0aaea5ee26489d0789f58162ed9fcfca90e3b2fa81de33e7f6",
+  "prep_template_sha256": "d1e03061e88af961d34ea6222fb8237200bba8a3ebe0eca1379d300201d540bb",
+  "remote_sha256": "5155ff0883996c909a9afa16fbbc5f398f23d211f6c3d121ccf3083a803b0246",
+  "runtime_sha256": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+  "sign_watch": {
+   "local_test": "fake signer: wrong request hash, wrong command, unknown action, repeat refused; both exact requests signed; the real r23 pin refuses the fake binary",
+   "path": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bin/sign_watch.py",
+   "sha256": "11182a80ade2e336bd69c2b536fb7ef06d4fe178779e40cc6e73e53dc8698567",
+   "signer_sha256": "d606a1cdb077983c5aff0e538e1fd73fb460529da10d4a201b53f918f9a954b2"
+  },
+  "signer_bind": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bin/hfs-retained9p-operator bind --request /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bootstrap-run/work/bind-request.json --output /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bootstrap-run/work/signer-binding",
+  "signer_enroll": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bin/hfs-retained9p-operator enroll --request /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bootstrap-run/work/enroll-request.json --output /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bootstrap-run/work/signer-enrollment",
+  "ssh_sha256": "d4c70b09427314b14b57f62507cb855acd28bb9dd84d835c2a7a606002296694",
+  "template_check": "refuses as expected: 'observer.ssh_sha256: SHA256 hex'",
+  "template_sha256": "535b0f84b291491dc7030645f332b9ac6c2fcdda4e4d1481bf5ede52011839d6"
+ },
+ "candidate": {
+  "evidence": "tools/integration/artifacts/evidence/xz3-20261126-r23/README.md",
+  "files_from_manifest": {
+   "freebsd/bhyve": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4",
+   "freebsd/hfs-controlled-runtime": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+   "linux/Module.symvers": "b68cf94aea6ab1f7f8599a1ba229951d4be1b1c4d8272dc4b9ce20f964828f17",
+   "linux/System.map": "1a80593f799f676b40263e0d6c1dd0ded079549f0c75b1572dcede690a05b167",
+   "linux/bzImage": "049b1367b69ebc493b90e61688f01c897176c6e8aa2ccacb13d34a35bcd0fb42",
+   "linux/config": "692ed3fa048ec59704f554e3ddcea11b66e3f420e23489022b25387302fc1f6c",
+   "linux/vmlinux": "1aa83d82f854938106be322e61a9875169158d7aa48616984d65dbf5e1835425"
+  },
+  "files_on_disk": {
+   "System.map": "1a80593f799f676b40263e0d6c1dd0ded079549f0c75b1572dcede690a05b167",
+   "bzImage": "049b1367b69ebc493b90e61688f01c897176c6e8aa2ccacb13d34a35bcd0fb42",
+   "config": "692ed3fa048ec59704f554e3ddcea11b66e3f420e23489022b25387302fc1f6c",
+   "daemon": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+   "exporter": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4"
+  },
+  "first_run_of": "the daemon 43238fe9 (Phase 4 step 1a required) and the kernel 2435216f; the exporter 8cadae40 ran in zq3-r21 and zq3-r22",
+  "kernel_build_id": "2435216f843bc8a821388e9733549f9969492dbb",
+  "manifest_sha256": "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3",
+  "package": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/package",
+  "rebuilt": "the CGO daemon 43238fe9 (km4: a held VIEW_RETIRE is answered BLOCKED; R22-1), the guest kernel 2435216f (km4's 6m4 retire-and-retry log line) and the window artifacts; the exporter 8cadae40 is the r22 (= second r21) rebuild's bytes",
+  "source_and_baseline": "source checkout and repository baseline 21d84783fccfc85a00a9b3c365b0cff0e73e627b (main after the km4 merge; the daemon was rebuilt there, so there is no inputs/repository-changes.patch)",
+  "superseded": "the r22 rebuild 2c85b230 (ran in zq3-r22), the second r21 rebuild f21450ec, the first r21 rebuild 1428d4db and every earlier candidate; rocky_kernel.py plan and controller.py refuse them",
+  "toolchain": "Fedora 45: binutils 2.47, clang 23 for the guest kernel; the daemon and the window artifacts go1.27.4 from 21d8478; the exporter (native f3 build) is reused from 2c85b230",
+  "window_artifacts": {
+   "controlledruntime.test": "d58fedc4f74077269802284567d7867e61b155118f5b3b6128a6600e1840946b",
+   "fdescfs-namespace": "6d54858cb71dde6f3aa506e9f00f41178adba69deecf44505e79be6e4181caa2"
+  }
+ },
+ "controller_batch": {
+  "candidate_manifest_sha256": "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3",
+  "case_seconds": 240,
+  "cases_planned": [
+   "credentials",
+   "sync",
+   "metadata",
+   "namespace"
+  ],
+  "deferred": [
+   {
+    "case": "mapped-pressure",
+    "reason": "q64/f84 (merged) fixed the view-lifetime wall: retired view tickets are recycled and the ACK archive and recall UUIDs are pruned. T5 is not yet re-planned or sized for the full 4 MiB canary on the 4 GiB host budget, so it stays deferred until that re-plan"
+   }
+  ],
+  "fd_attr": true,
+  "phase8_fields": [
+   "boot_id",
+   "provider_nonce",
+   "installed_manifest_sha256 (+ manifest_sha256 in all 4 requests)",
+   "m0/m1 mount_id"
+  ],
+  "probe_sha256": "746a67bcda77c2e8a45cfde76acc1f184d40f7cb79dc43a5c791d7bba70fa0ef",
+  "seconds": 255,
+  "ssh_sha256": "d4c70b09427314b14b57f62507cb855acd28bb9dd84d835c2a7a606002296694",
+  "synthetic_check": "pass (cases_planned the four, deferred mapped-pressure, fd_attr true)",
+  "synthetic_checks": {
+   "defer-credentials": "refuse: case may not be deferred: credentials (only mapped-pressure, per q64)",
+   "fd-attr-false": "refuse: fd_attr must be true; omit it to mount without hfs_fdattr",
+   "fd-attr-one-request-missing": "refuse: closed input shape: version,run_id,boot_id,provider_nonce,manifest_sha256,mounts,case,seconds,fd_attr",
+   "fd-attr-requests-only": "refuse: closed input shape: version,run_id,boot_id,provider_nonce,manifest_sha256,mounts,case,seconds",
+   "first-r21": "refuse: superseded xz3 candidate: use the r23 rebuild (21c49a55; d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry, first r21 rebuild 1428d4db without s64/hh4 ABANDON/dh4/vj4/wj4, second r21 rebuild f21450ec without the 6m4 cross-session retire before ENOSPC, r22 rebuild 2c85b230 without the km4 BLOCKED answer to a held VIEW_RETIRE)",
+   "no-fd-attr": "accepted: {\"plan_sha256\": \"f402171cf290032f13c6ca7e622d12eca071b47d27b05c2d96613186984d233a\", \"cases",
+   "old": "refuse: superseded xz3 candidate: use the r23 rebuild (21c49a55; d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry, first r21 rebuild 1428d4db without s64/hh4 ABANDON/dh4/vj4/wj4, second r21 rebuild f21450ec without the 6m4 cross-session retire before ENOSPC, r22 rebuild 2c85b230 without the km4 BLOCKED answer to a held VIEW_RETIRE)",
+   "r14-plan-seconds": "refuse: per-dispatch deadline cap 255..600 seconds",
+   "r14-request-seconds": "refuse: case differs from exact batch",
+   "r14-seconds": "refuse: per-dispatch deadline cap 255..600 seconds",
+   "r20": "refuse: superseded xz3 candidate: use the r23 rebuild (21c49a55; d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry, first r21 rebuild 1428d4db without s64/hh4 ABANDON/dh4/vj4/wj4, second r21 rebuild f21450ec without the 6m4 cross-session retire before ENOSPC, r22 rebuild 2c85b230 without the km4 BLOCKED answer to a held VIEW_RETIRE)",
+   "r21": "refuse: superseded xz3 candidate: use the r23 rebuild (21c49a55; d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry, first r21 rebuild 1428d4db without s64/hh4 ABANDON/dh4/vj4/wj4, second r21 rebuild f21450ec without the 6m4 cross-session retire before ENOSPC, r22 rebuild 2c85b230 without the km4 BLOCKED answer to a held VIEW_RETIRE)",
+   "synthetic": "accepted: {\"plan_sha256\": \"7076ce2c877e502d7e7738f0a5a389c9676403b5d3d0c6d78b584caeb1d9b3bb\", \"cases",
+   "template": "refuse: probe/installed-manifest pin",
+   "undeclared": "refuse: trusted-root exact five-case syscall batch minus declared deferrals"
+  },
+  "synthetic_shapecheck_sha256_NOT_A_PIN": "7076ce2c877e502d7e7738f0a5a389c9676403b5d3d0c6d78b584caeb1d9b3bb",
+  "template": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/controller/batch-plan.TEMPLATE.json",
+  "template_check": "refuses as expected (placeholders): 'probe/installed-manifest pin'",
+  "template_sha256": "aa1ab40f3198a559758ca2b33e4c08a537b34d4087a8f023feef7061dcc126d1"
+ },
+ "fd_attr": {
+  "batch_requests_fd_attr": [
+   true,
+   true,
+   true,
+   true
+  ],
+  "batch_template_fd_attr": true,
+  "bootstrap": {
+   "fd_attr_candidate_manifest": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/package/manifest.json",
+   "fd_attr_candidate_sha256": "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3",
+   "fd_attr_kernel_plan": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/kernel/rocky-kernel-plan.json"
+  },
+  "bootstrap_kernel_plan_sha256": "dda355cfba97e8a0ca11d89d2ab01a61e6d3802be8ca5d537a4c9a16c487fb3f",
+  "controller_FD_ATTR_holds_candidate": true,
+  "decision": "enabled, as in zq3-r21 and zq3-r22 (both mountinfo rows showed hfs_fdattr right after cache=mmap): 21c49a55 is controller.FD_ATTR's one entry (s64 in kernel, exporter and daemon); the retained9p README's hfs_fdattr section names no other precondition, and nothing is missing",
+  "mount_options": "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536",
+  "mountinfo_rule": "hfs_fdattr exactly once, right after cache=mmap (guest.py check_tuple, bootstrap_remote.py fd_attr_shown, fill_plan.py batch)",
+  "negatives": {
+   "batch fd_attr false": "refused: fd_attr must be true; omit it to mount without hfs_fdattr",
+   "batch request without fd_attr": "refused: closed input shape",
+   "bootstrap naming the r22 manifest 2c85b230": "refused: superseded xz3 candidate",
+   "bootstrap with a missing candidate manifest": "refused: No such file or directory",
+   "bootstrap with zq3-r22's daemon c7b89648 as runtime.sha256": "refused: not the candidate's daemon",
+   "bootstrap with zq3-r22's kernel plan": "refused: pinned input changed (kernel.plan_sha256 pins its bytes)",
+   "bootstrap without fd_attr_kernel_plan": "refused: plan: closed keys",
+   "fill_plan.py batch on a READY run without hfs_fdattr rows": "refused: bootstrap plan names fd_attr candidate 21c49a55... but its mounts do not show hfs_fdattr",
+   "requests with fd_attr under a plan without it": "refused: closed input shape"
+  },
+  "t3": "metadata adds the peer-rename guard: stat(old name) through m0 ENOENT, fstat(fd) the same file"
+ },
+ "fdescfs_window": {
+  "directory": "/var/tmp/hfs-fdescfs-windows/zq3-r23",
+  "pins": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/fdescfs-pins/pins.json",
+  "pins_derived_from": "docs/lab/zq3-fdescfs-window/pins.json at f584de4 (09159a98; the three artifact pins moved to the r23 daemon, helper and test binary) with zq3-r1 -> zq3-r23",
+  "pins_sha256": "22b2c45b094550810b5ddf1521212810ae99c9a63f8b4ebe6d6642e4e746043a",
+  "synthetic_fill": [
+   "== modules absent, r23 artifacts",
+   "67587887d5d1f3dea60cc2e73c85c05e0f1af3ebcf965fd5b0e28d8dbc14c012",
+   "== modules absent, r22 (= r21) artifact hashes",
+   "FillRefused: pinned artifact differs or missing: /var/tmp/hfs-validation-xz3/zq3-r23/bin/hfs-controlled-runtime",
+   "== modules absent, r20 artifact hashes",
+   "FillRefused: pinned artifact differs or missing: /var/tmp/hfs-validation-xz3/zq3-r23/bin/hfs-controlled-runtime",
+   "== modules absent, xc4/xd4 artifact hashes",
+   "FillRefused: pinned artifact differs or missing: /var/tmp/hfs-validation-xz3/zq3-r23/bin/hfs-controlled-runtime",
+   "== modules loaded (state on f3 now: fdescfs 39, fusefs 40)",
+   "FillRefused: fdescfs module present; plan is for absent"
+  ]
+ },
+ "fill_helpers": {
+  "bin/sign_watch.py": "11182a80ade2e336bd69c2b536fb7ef06d4fe178779e40cc6e73e53dc8698567",
+  "build-stage.sh": "f018add63ee331d915dfd712c8ccd29802765bf05690b1fe9905e53eb2e9d267",
+  "derive-templates.py": "6f989da6e049b3156ac28080a662ae2e492b9bb22123bb2c402d78df3c8c36ab",
+  "dryrun/ctl.py": "4913b0504fbbe66794a3e054764921d75a6587deec8b07e8209bb7ab1570b755",
+  "dryrun/f3stub.py": "b8adb37af6374d8a687dba71be6c2da293f7bddcab71d8c26d7ed5c3460f626e",
+  "dryrun/failobs.sh": "3703a033f9147bf3502c9380994203d252574763b30778455fd47a335d4cd60b",
+  "dryrun/genrun.py": "72d3a6ca33cc15f0c83dfded62543e8b4ed41f14884712a83b856a29cc35fd11",
+  "dryrun/helpers-dryrun.py": "b4d76585b21f3dba4b8f8cc835c9d48219ecdfe2d462c374a846c9b88ac3d5a5",
+  "dryrun/mkrun.py": "cb9900fb1fb57fa185a2c0b5e227797844ab58849028712836042b76e4a6d423",
+  "dryrun/rockystub.py": "3d6cf53e9fe6b55df708dc6fb700e313e1ab2b19447ad3de3cf2827e47ab1cc7",
+  "make-pins.py": "217c877fb004aaa74c008899eba8097838ee456ccabc765eaaa96f4003734492",
+  "make-spec.py": "dccd6123e2303cfd6ff01003ce5e9dbb115da6d12b09b38e2745be342db5e8d7",
+  "session.sh": "ed65bbf4a03298def1dd7ba6f1901d0e1545d434b7b4d6f0149ab74be085ebc5",
+  "sh/guard-budget.py": "9285966bb921b9fe3f4cc154a1de7ff8d79fe9ce98ae41962866c0d51084d0cb",
+  "sh/n1-gate.py": "710b4ae21ee85ee90716fbe0762d6e0971ffbeebc1baec8296caeb5c6bcf4b82",
+  "sh/p1-f3.sh": "890b1def8c0030b5095e7333ddbc41c4857b19f9216d86325070509c0bdfb1db",
+  "sh/p10-admission.py": "0c5f5a99cbf52a6379be9fd3ec0d496e69b68f6ffa8622232fb3e8f0c4cc379f",
+  "sh/p10-argv.py": "901a7079fa6a2b84852a979f729953f2d3acb8505e2751ee400942df5823524a",
+  "sh/p10-requests.py": "71cda952cbd6195b97fa2bf01ed2527b7cf0a3aa9cff9fe776e5bd2c0cdc0ec9",
+  "sh/p11-fence.py": "839bd7a5bc21f0c5de4090be67c90cb03d6db20dcdc7dce40e744ce98708492c",
+  "sh/p4-libs.sh": "a10e3f43d9711c0c6f4532f3e02d0f2623e6bf62db298ef98d548a1996d5a032",
+  "sh/p4-observer.py": "fa0d2c7404dae594e707f535903eed57ae9ec80be173b717818b7427a39fe7e2",
+  "sh/p5-estimate.py": "30fdfceac6e6c521d5509f238bbb89d80990e214820982bd360ecbc3a291533e",
+  "sh/p5-recheck.py": "b14693277cb527434ec355f967e4c20993e3340d94b21fe63be5b082daf5920f",
+  "sh/p5-uma-stat.sh": "c1e1a64f321670a048b8cffd8ec0d40f90577ffd17498136469f351061a616c8",
+  "sh/p6-admission.py": "13850d5c77621533f2136ecc42734d0f2f0c30ad9e80b5b2ad4288f89bb15034",
+  "sh/p9-observe.py": "bf8bcec32f9ed5cfa9140b853ec151bc9d56d6d600919eb0d3ba941f3c4774cd",
+  "sh/p9-ready.py": "e6a9a9cd356c865d92c513e13af141d3c6b6ae73f25fa9245976d6d36010f6e5",
+  "sh/p9-timing.py": "d71ab3945d2235dddf806dd0d329f851d5aa46c74afa8465ae8a8e24e6cb0fd6",
+  "sh/recalls.py": "acaaf1867cd6c05e9ee575768e233bf092f7ba6ade7e80709696c5c157d886ac"
+ },
+ "filled_utc": "2026-11-26",
+ "native_guard": {
+  "local_reserved_bytes": 4294967296,
+  "max_seconds": 60,
+  "rocky_birth_utc": "Thu Nov 26 14:51:24 2026",
+  "rocky_config_sha256": "c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581",
+  "rocky_pid": 50982,
+  "root": "/var/tmp/hfs-20261126-zq3r23-fdq",
+  "script_sha256": "576d802a55bae8185821c521b5fc6d36b3c778dd70ec91bb747401c3c9199ed4",
+  "stages": [
+   "unsupported-before",
+   "process-observer (required: the new daemon 43238fe9 has never been checked on f3)",
+   "qualify"
+  ]
+ },
+ "observer": {
+  "authorized_keys_sha256_pre_run": "e08542dccf25c758af2a9dce35428c9680101cd015295d92499f4d6859866855",
+  "f3_ssh_sha256": "6a9e5573eda7dfaef1addf1b199872fe41af2027ef19430d4aa7e0a7919a369b",
+  "from": "10.20.0.133 (on vm-public at the facts)",
+  "guest": "10.20.0.123",
+  "identity_on_f3": "/var/tmp/hfs-validation-xz3/zq3-r23/observer/id_ed25519",
+  "installed_probe_sha256": "c824b183288fb7b1c9e550aad785c147446748d1a6aa39ded613cc621dfcc321",
+  "interpreter": "/usr/bin/python3.9",
+  "interpreter_sha256": "729ac37ffbf7f0ded4b08a9d49e95145c8e46717bf485f76a3675b27255054a8",
+  "observer_key_py_sha256": "cd7f38c2660701129f1133194cfea881471480623d7dac843ee443e9688d920e",
+  "observer_py_sha256": "2e1449dd153b83d5a110ce439e0d0754125412a20f8d15d07f7ad4122a3098aa",
+  "qualification": {
+   "check": "sh/p4-observer.py; zq3-r22's real records (pid 39889) renamed and with 43238fe9 substituted pass; with their own daemon c7b89648 they are refused for the sha256 only, unrenamed for the staged path too",
+   "command": "f3 \"$NG --stage process-observer /var/tmp/hfs-validation-xz3/zq3-r23/bin/hfs-controlled-runtime --check-process-observer\"",
+   "daemon_sha256": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255"
+  }
+ },
+ "phase1_facts": {
+  "collected_utc": "20261126T201519Z (read-only, pinned host keys: f3 Phase 1 batch, host.py facts, net/modules, f3 ssh; Rocky Phase 1 batch, grub, pod runtime, upgrade, uptime, dnf #68 with needs-restarting and systemd state; Rocky runs zq3-r22's Phase 12 incarnation)",
+  "f3_arc_bytes": 8342728128,
+  "f3_arc_c_min_bytes": 527494912,
+  "f3_kern_boottime": "{ sec = 1794574308, usec = 469376 } Fri Nov 13 14:51:48 2026 (unchanged since zq3-r8)",
+  "f3_mem_note": "a record only, not a headroom judgement: the iormesh session runs its VMs on f3 at times; Phase 5 and the Phase 6 bar decide at run time",
+  "f3_mem_pages": {
+   "active": 58911,
+   "free": 1324113,
+   "inactive": 377699,
+   "pagesize": 4096,
+   "physmem": 16879837184,
+   "wire": 2255191
+  },
+  "f3_modules_loaded": "fdescfs.ko (id 39) and fusefs.ko (id 40), left by zq3-r22; Phase 1a unloads both",
+  "f3_network": "10.20.0.133 on vm-public (members tap0, re0)",
+  "f3_staging": "the r23 staging, window and guard-root paths are absent",
+  "f3_swap": "0 of 2,097,152 KiB used: no Phase 0b",
+  "f3_vms": "rocky Running (50982); freebsd, iom1, iom2, iom3, hfs-test0..2 Stopped; no iormesh k3s VM listed; /dev/vmm holds only rocky (after the facts the iormesh session started iom1 and iom2, with the orchestrator's agreement, for up to about 5 hours: the run-day refresh must find all Stopped)",
+  "f3_zroot": "ONLINE, 343G free",
+  "files_sha256": {
+   "STAMP": "352b0ebe04b3892745dfb36c01d9f7cbe5c47eea25db13d2ff78842c1fe7a137",
+   "f3-launch-facts-20261126T201519Z.json": "38b9a414e3c3de74e50a813bf2807a6dc3c7a62dfa3ef548e65a2b4abcee7ec5",
+   "f3-net-mods-20261126T201519Z.txt": "7e5504941f49036ce8b4b02b9ef3c096eb1ad072b7fd2145c00202033d9b2058",
+   "f3-phase1-20261126T201519Z.txt": "f086e581ca599d0e1e210307ecbd3cd4dbf8ddcefd5d00a76aa9d9993d555ca5",
+   "f3-usr-bin-ssh-20261126T201519Z.sha256": "49f48f61c619888080a6ed3ec75e34dd4b1eafe427e674a1556971ab94e3011b",
+   "rocky-dnf68-20261126T201519Z.txt": "5d8c1599f331d27b06f56bec109a82f9bd1fe7d1e346ecc62a17c8acc0c5a23f",
+   "rocky-grub-20261126T201519Z.txt": "80e00a75c62abbd4010d6845583505751d6410ab24678d793fdea6561623886c",
+   "rocky-phase1-20261126T201519Z.err": "048e2ba89ae430962e02f5341cf60c694fb7e131cb417790075a56b32ca09992",
+   "rocky-phase1-20261126T201519Z.txt": "9f342b5f2f2b04ce7206b1094d18fe45cb90d0fdec56aafe0bf283b5fc80484e",
+   "rocky-pod-runtime-20261126T201519Z.txt": "57bba75a84e4ebc12f973f32f374a1995f05df654e4bda441ac6d3f516c907f7",
+   "rocky-upgrade-20261126T201519Z.txt": "7055ad19bdc670621d4401ad9f1a41bbab9c12d0fdfc6042af99d5c1b214b989",
+   "rocky-uptime-20261126T201519Z.txt": "cb0cb92f4c1368d33f9e005416855f9b11611e7e4559709b526c4d29259c21f3"
+  },
+  "firmware": {
+   "link": "../edk2-bhyve/BHYVE_UEFI.fd",
+   "target_sha256": "6b48e9673915110037a54835dca217bcb262c1de3606a482f0ff3890687499e2"
+  },
+  "rocky_autorelabel": "absent",
+  "rocky_boot_id": "99de7fb2-c8e3-4b60-afef-7b11e77b4142",
+  "rocky_conf_sha256": "c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581",
+  "rocky_grub_default_kernel": "/boot/vmlinuz-5.14.0-741.27.1.el9_9.x86_64",
+  "rocky_lstart_utc": "Thu Nov 26 14:51:24 2026",
+  "rocky_next_entry": "",
+  "rocky_pid": 50982,
+  "rocky_running_kernel": "5.14.0-741.27.1.el9_9.x86_64",
+  "rocky_saved_entry": "b26c0ac534534d7fb81b3e0698558bc3-5.14.0-741.27.1.el9_9.x86_64",
+  "rocky_selinux": "Enforcing",
+  "rocky_test_kernel": "none in /boot; /etc/homelabfs absent",
+  "rocky_upgrade": {
+   "dnf_newest": "#68, 2026-11-26 00:55, 29 packages: stock kernel 741.27.1 (grub default), kernel-tools, ruby, webkit2gtk3-jsc; no pod runtime change",
+   "needs_restarting": "no reboot needed",
+   "next_dnf_run": "2026-11-27 00:55 EET = 2026-11-26 22:55 UTC (latest Phase 5 start on 2026-11-26 was 21:25 UTC, too close: the run is on a later day after fresh Phase 0/1 checks)",
+   "stamp": "2026-11-26",
+   "systemd": "running",
+   "time_zone": "Europe/Sofia (EET, +0200), synchronized"
+  },
+  "rocky_uptime": "5:23 at 20:15Z (zq3-r22's Phase 12 start 14:51Z)",
+  "uefi_vars_sha256": "4f63d71bbf0b44279ef1588865f659c1b09d818dfe9e007df8d6f3450fb1d375",
+  "vm_run_sha256": "43753bc83263c26a25f49e7ccd3c1da79dca7a6361442b3c61a1831bd2782db0"
+ },
+ "phase6_bar_bytes": 14763950080,
+ "pod": {
+  "fixture_sha256": "7c1e545ff8689aa54c20da8d7309e1720498a788d437e2b465d6cceeb75f1e40",
+  "refill": "runtime pins rewritten from the 20261126T201519Z facts, equal to zq3-r22's (podman 5.8.5-5.el9_9 since dnf #67); pod_fixture.py's check_nevra_pins and parse_request accept the template and refuse the malformed variants and zq3-r20's fixture pin",
+  "request_template_sha256": "bfc3ac25df8b09b23020dc28e90b5f9612b6d4917f983b79f67e2e95dd94555a",
+  "rootfs_manifest_sha256": "Phase 3 fill (PM); expected 34a71569f126ebeaa838a26788e75e1144b4d927228a4c9461940eb1fb2f46c4 (zq3-r15's to zq3-r22's real digest; no dnf run since zq3-r21 at the facts); any other digest is explained before build",
+  "runtime_nevra": {
+   "crun": "crun-1.29.1-1.el9.x86_64",
+   "podman": "podman-6:5.8.5-5.el9_9.x86_64"
+  },
+  "runtime_sha256": {
+   "conmon": "1ac2a8db88daa908fa37911960d9e27215b1d9acfb6d4bf07a4ef32ee658742e",
+   "crun": "659867c7bc8c03c6832fbccc220ac116e21e406bd735af00b149f1344f84b8b7",
+   "podman": "8d94a8fb8fb09bfd753f6ace9641aa11cb547446c6cf167fbce0b393d7904b54",
+   "seccomp": "7dd441197a3e60c424a6e7844667eafc09c1b7ed3d635e62789fc77447388e9b"
+  },
+  "version": "homelabfs-retained9p-pod/2",
+  "workload_sha256": "c714370f38685c2d79ba55e84d0f25096e9a9c755417b8aca3cca8e4e842deb0"
+ },
+ "repo_commit": "f584de476f4eff49d9647359943fe15c63031edd",
+ "rocky_kernel_plan": {
+  "default_rule": "install adds a non-default BLS entry (never --make-default); select sets only the one-shot next_entry; the Phase 8 boot consumes it; Phase 12 boots the stock default 741.27.1 and checks it; U2 removes the test kernel",
+  "kernel_build_id": "2435216f843bc8a821388e9733549f9969492dbb",
+  "manifest_sha256": "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3",
+  "path": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/kernel/rocky-kernel-plan.json",
+  "plan_sha256": "dda355cfba97e8a0ca11d89d2ab01a61e6d3802be8ca5d537a4c9a16c487fb3f",
+  "release": "6.1.190-hfs-xz3",
+  "script_sha256": "e99d91b88722a682d16d64f4cf3dfbfeaf339a0c8c11f0ffe2a17beeea5e295b",
+  "stage": "/root/hfs-zq3-zq3-r23-kernel-stage",
+  "state": "/root/hfs-zq3-zq3-r23-kernel-state",
+  "stock_default_kernel": "/boot/vmlinuz-5.14.0-741.27.1.el9_9.x86_64",
+  "superseded_negative": "plan for the r22 rebuild 2c85b230 refused: superseded xz3 candidate manifest; use the r23 rebuild (21c49a55)"
+ },
+ "run_id": "zq3-r23",
+ "run_inputs": {
+  "guest_lock_probe_sha256": "fd439897ecf22033c97e490c4f5bceab58968bd06fcc6ec565f97f89a0d44397",
+  "lock_probe_budgets": "case_seconds 150, overall_seconds 240 (be4)",
+  "lock_probe_m0_template_sha256": "302c6f48c8aacd209c1b892c6b9a3897a37833a5db9d04b68c406f8204769672",
+  "lock_probe_m1_T8_template_sha256": "850f498cead1ff07c22753c2be26317ada095805e5029cfa5a8044c47cbdc2f4"
+ },
+ "runtime_guard": {
+  "argv": [
+   "/usr/local/bin/doas",
+   "-n",
+   "/usr/local/bin/python3.12",
+   "-I",
+   "-B",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/runtime-guard.py",
+   "--run-dir",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/guard",
+   "--runtime-sha256",
+   "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+   "--vm-name",
+   "hfs-zq3-r23",
+   "--disk-root",
+   "/var/tmp/hfs-validation-xz3/zq3-r23",
+   "--disk-root",
+   "/var/tmp/hfs-fdescfs-windows/zq3-r23",
+   "--skip-path",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/runtime/mnt",
+   "--",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/hfs-controlled-runtime",
+   "--config",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/runtime/runtime-config.json",
+   "--disposable-validation"
+  ],
+  "check": "equal to bootstrap.py SshRemote.guard_argv() for the filled plan (shell and argv); ends with --disposable-validation; passes runtime-guard.py parse_args + check_command; --runtime-sha256 is the package daemon 43238fe9",
+  "limits": "runtime-guard.py defaults = plan ceilings (bootstrap.py passes no limit options): max_seconds 3600, runtime_rss_bytes 4 GiB+256 MiB, exporter_rss_bytes 6 GiB+512 MiB, disk_bytes 4 GiB, free_disk_bytes 8 GiB, memory_floor_bytes 512 MiB, swap_limit_bytes 0, on-breach stop-runtime, stop-grace 30 s, observe-after-stop 300 s, interval 1 s",
+  "script_sha256": "fece96b3a42043a7434ee37fc0c38464addabe0eb2ba618d2fc54aafaa1f457e",
+  "sha256": "19de205a0bad89424b421e87124398cf74960c79ed07d1f8b4867fc0cc9642da"
+ },
+ "runtime_prep_bundle": {
+  "dir": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bundle",
+  "exporter_args_sha256": "34e4d98e64d32173c3fea685bb5740bc97134ea5d922c37da5f2bbeb09bac73f",
+  "exporter_sha256": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4",
+  "format_check": "generation.json, volume-init.json and request-template.json have zq3-r22's key structure; runtime-config.json differs only in its session-UUID map keys",
+  "generated_utc": "2026-11-26T20:15:56Z",
+  "generation_json_sha256": "c446a0ce91c047903f1b7d15bde9b2d50c5419046d9c6d9ba076e0cb1eb9ab42",
+  "guest_budget": {
+   "control_bytes": 536870912,
+   "cookies": 64,
+   "ordinary_bytes": 536870912,
+   "received": 256,
+   "reservations": 1024
+  },
+  "operator_key_path_recorded_never_read": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/operator/operator-signing-key",
+  "private_key_files": "keys/{host,guest}-{0,1}.key and runtime-config.json host receipt keys stay in the private fill dir and on f3 only; never committed (their hashes are not published)",
+  "request_template_sha256": "d1e03061e88af961d34ea6222fb8237200bba8a3ebe0eca1379d300201d540bb",
+  "runtime_config_sha256": "80188fb7ed268419dae3c0d00de60db44ce3d0c2fd5a1ac1d04285d1e7369f3a",
+  "sessions": [
+   {
+    "guest_public_key": "c70698b29f83b021a81df1d5c3c721d1fe2215a7645f0c230b0901232914c1d6",
+    "host_public_key": "7bee64caad370418924e1d91d647a7e38032d9b3fdaa2e67612f9ce992555b5e",
+    "pci": "0:7:0",
+    "session": "a19f095f-c12c-410e-b5f2-c1cb11ca6eca",
+    "tag": "hfs0"
+   },
+   {
+    "guest_public_key": "e8fed2dbe0953411ae795760c36404d45c4817df947a78fd1a9f9967ae6a8d8f",
+    "host_public_key": "015dc1d87eef5d91b4749c470576ebc3ac54fc1e08a409329a244383d34402ba",
+    "pci": "0:8:0",
+    "session": "227cf32d-2cba-4a71-9dbb-7ea4a731dd48",
+    "tag": "hfs1"
+   }
+  ],
+  "source": "f584de476f4eff49d9647359943fe15c63031edd",
+  "spec_differs_from_testdata_only_in": "run ID zq3-r1 -> zq3-r23 in RunID, paths, nmdm and VM name; OperatorKey path (make-spec.py); equals zq3-r22's spec renamed (the testdata is unchanged since 95f6d84)",
+  "spec_sha256": "55b9eab5f611b4c5dac6b0788f914060692159b149611ac036a322399be8eb73",
+  "views_control_tickets": 24,
+  "vm_uuid": "e10b6225-44d0-11f1-882a-e8ff1ed7f3d7",
+  "volume_id": "a9d8b116-b0fd-4326-8ba8-b4d16fce1abf",
+  "volume_init_sha256": "b30ac43a03c98caf6aac8ee83ba763e1f9e684b7d683126668f62db2d3ba4c23"
+ },
+ "staged_files": {
+  "f3": {
+   "/var/tmp/hfs-20261126-zq3r23-fdq/native-test-guard.py": "576d802a55bae8185821c521b5fc6d36b3c778dd70ec91bb747401c3c9199ed4",
+   "/var/tmp/hfs-20261126-zq3r23-fdq/runner_process.py": "91310cb7aac7c58e7a16271e69cd88c0443fa3be84d7843b2dd2b9a577ca4c10",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/argv.py": "940d4787f864916b7a2349b438ae225a3968c86acf92865d8ccc2ae164f2c098",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/bhyve": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/controlledruntime.test": "d58fedc4f74077269802284567d7867e61b155118f5b3b6128a6600e1840946b",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/fdescfs-namespace": "6d54858cb71dde6f3aa506e9f00f41178adba69deecf44505e79be6e4181caa2",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/fdescfs-window.py": "b00b19d1bfa0b88392e0a1cf6695ba444568ea29247eaf1a0e3c7c56152975e4",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/hfs-controlled-runtime": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/homelabfs": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/host.py": "738e1ca55a460bf6dfb596a3e60c90a5ceef3ec4d4f5c908f94ceb3ca8a929ec",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/host_snapshot.py": "b29ffed26f3c4cb26f71b914de799de86df9cc244d74b7e0eb15f248b3e8cce8",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/runtime-guard.py": "fece96b3a42043a7434ee37fc0c38464addabe0eb2ba618d2fc54aafaa1f457e",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/bin/runtime-volume-init.py": "7fad74a11499de5ecb69b2a43dffcb6ff3b4cbad4dba3b7990410671483eb554",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/observer/rocky-known_hosts": "d7b158e84b5778bde292b1764c77cde8ae841b1f442a9557148c02c943c50ba5",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/records/bhyve-argv.json": "d19bc90202140d9c8b1fa84d89a79fad759b71e537137008752e93ab762d8422",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/records/volume-init.json": "b30ac43a03c98caf6aac8ee83ba763e1f9e684b7d683126668f62db2d3ba4c23",
+   "/var/tmp/hfs-validation-xz3/zq3-r23/runtime/runtime-config.json": "80188fb7ed268419dae3c0d00de60db44ce3d0c2fd5a1ac1d04285d1e7369f3a"
+  },
+  "f3_tar_recipe": "tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-26T00:00:00Z --format=gnu -C /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/stage/f3 -cf /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/stage/f3-stage.tar hfs-20261126-zq3r23-fdq hfs-validation-xz3/zq3-r23",
+  "f3_tar_sha256": "be6585e729dd32a2bbbe1d6d598dfb58ec2cb9442e075260d3cf8fede8d990e7",
+  "rocky": {
+   "/root/hfs-zq3-zq3-r23-incoming/installed.py": "c824b183288fb7b1c9e550aad785c147446748d1a6aa39ded613cc621dfcc321",
+   "/root/hfs-zq3-zq3-r23-incoming/observer.py": "2e1449dd153b83d5a110ce439e0d0754125412a20f8d15d07f7ad4122a3098aa",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/System.map": "1a80593f799f676b40263e0d6c1dd0ded079549f0c75b1572dcede690a05b167",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/bzImage": "049b1367b69ebc493b90e61688f01c897176c6e8aa2ccacb13d34a35bcd0fb42",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/config": "692ed3fa048ec59704f554e3ddcea11b66e3f420e23489022b25387302fc1f6c",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/rocky-kernel-plan.json": "dda355cfba97e8a0ca11d89d2ab01a61e6d3802be8ca5d537a4c9a16c487fb3f",
+   "/root/hfs-zq3-zq3-r23-kernel-stage/rocky_kernel.py": "e99d91b88722a682d16d64f4cf3dfbfeaf339a0c8c11f0ffe2a17beeea5e295b",
+   "/root/hfs-zq3-zq3-r23-pod/pod_fixture.py": "7c1e545ff8689aa54c20da8d7309e1720498a788d437e2b465d6cceeb75f1e40",
+   "/root/hfs-zq3-zq3-r23-pod/pod_workload.py": "c714370f38685c2d79ba55e84d0f25096e9a9c755417b8aca3cca8e4e842deb0",
+   "/root/hfs-zq3-zq3-r23-tools/guest-lock-probe.py": "fd439897ecf22033c97e490c4f5bceab58968bd06fcc6ec565f97f89a0d44397"
+  },
+  "rocky_tar_recipe": "tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-26T00:00:00Z --format=gnu -C /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/stage/rocky -cf /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/stage/rocky-stage.tar hfs-zq3-zq3-r23-incoming hfs-zq3-zq3-r23-kernel-stage hfs-zq3-zq3-r23-pod hfs-zq3-zq3-r23-tools",
+  "rocky_tar_sha256": "29588b14ea9fb634a38c42a0bde55990f622134adf396186414a8e92c0797699",
+  "verification": "both tarballs extracted locally: all 35 files matched; the f3 tarball holds only 0/0 entries (modes 0700/0500/0400) and no parent entry; a second tar run gave the same hashes; the extract was deleted (it held the runtime config)"
+ },
+ "version": "homelabfs-zq3-filled-plan-pins/1",
+ "workstation_tools": {
+  "built_from": "f584de4 with go1.27.4-X:nodwarf5 (-trimpath, CGO_ENABLED=1, VCS-stamped, unmodified private clone, vcs.modified=false); a second build forced with -a gave the same bytes",
+  "hfs-retained9p-operator": {
+   "path": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bin/hfs-retained9p-operator",
+   "sha256": "d606a1cdb077983c5aff0e538e1fd73fb460529da10d4a201b53f918f9a954b2"
+  },
+  "hfs-runtime-prep": {
+   "path": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/bin/hfs-runtime-prep",
+   "sha256": "63fa89c6ed4c6d0aaea5ee26489d0789f58162ed9fcfca90e3b2fa81de33e7f6"
+  },
+  "init_helper": {
+   "reproduced": true,
+   "sha256": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80",
+   "source": "e0cca0c"
+  },
+  "lab_tools": {
+   "argv.py": "940d4787f864916b7a2349b438ae225a3968c86acf92865d8ccc2ae164f2c098",
+   "bootstrap.py": "b871412040a080ab231ea031cfe522818e574dd7c4f1058041059c086252b9cf",
+   "bootstrap_remote.py": "5155ff0883996c909a9afa16fbbc5f398f23d211f6c3d121ccf3083a803b0246",
+   "check-retained9p.sh": "bd1d6346f64f8bb0f5cc8aff6c3bce692da98732a027bc448b39e780e4b336f2",
+   "controller.py": "167f83635aa758b544a983c5e2c7a2ce591b5c965fac1ae88b927aa4e75b9cd1",
+   "correlate.py": "d20f97537918db35c78395d025ec3ec819248f872dce9275020b2804a3b18f5c",
+   "fdescfs-window-plan.py": "56ef5bb4aaf845ef1d975cc6598ac0b186e70f9539e1d0300bd8c7253fe98c54",
+   "fdescfs-window.py": "b00b19d1bfa0b88392e0a1cf6695ba444568ea29247eaf1a0e3c7c56152975e4",
+   "fill_plan.py": "1a32774dfa6cbfc5503aa51d1b3ff1f4785ecf81c3cdd7991f570d7cc04d48c9",
+   "guest-lock-probe.py": "fd439897ecf22033c97e490c4f5bceab58968bd06fcc6ec565f97f89a0d44397",
+   "guest.py": "746a67bcda77c2e8a45cfde76acc1f184d40f7cb79dc43a5c791d7bba70fa0ef",
+   "host.py": "738e1ca55a460bf6dfb596a3e60c90a5ceef3ec4d4f5c908f94ceb3ca8a929ec",
+   "host_snapshot.py": "b29ffed26f3c4cb26f71b914de799de86df9cc244d74b7e0eb15f248b3e8cce8",
+   "native-test-guard.py": "576d802a55bae8185821c521b5fc6d36b3c778dd70ec91bb747401c3c9199ed4",
+   "observer.py": "2e1449dd153b83d5a110ce439e0d0754125412a20f8d15d07f7ad4122a3098aa",
+   "observer_key.py": "cd7f38c2660701129f1133194cfea881471480623d7dac843ee443e9688d920e",
+   "pod_fixture.py": "7c1e545ff8689aa54c20da8d7309e1720498a788d437e2b465d6cceeb75f1e40",
+   "pod_workload.py": "c714370f38685c2d79ba55e84d0f25096e9a9c755417b8aca3cca8e4e842deb0",
+   "rocky_kernel.py": "e99d91b88722a682d16d64f4cf3dfbfeaf339a0c8c11f0ffe2a17beeea5e295b",
+   "runtime-guard.py": "fece96b3a42043a7434ee37fc0c38464addabe0eb2ba618d2fc54aafaa1f457e",
+   "vms.sh": "136c8c0b364b7eed99b954bb231456ec3b10e032870260c91c9921eb003de6eb"
+  },
+  "prep_source_vs_candidate": "git diff 21d8478 f584de4 -- internal cmd go.mod go.sum is empty: the prep and signer link the daemon's km4-changed packages (controlledruntime, viewcontrol) at the daemon's own revision",
+  "snapshot": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/snapshot (git archive of f584de4, main HEAD at fill time: docs internal tools)",
+  "workstation_ssh": {
+   "package": "openssh-clients-10.6p1-1.fc45 (unchanged since zq3-r21)",
+   "path": "/usr/bin/ssh",
+   "sha256": "d4c70b09427314b14b57f62507cb855acd28bb9dd84d835c2a7a606002296694"
+  }
+ }
+}
