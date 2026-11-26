@@ -108,7 +108,7 @@ builds, with the same README invocation (load average 4.3), it passed in
 (`controlled`, `controlled-rerun`).
 
 Not run:
-- `controlled_provider`: another task repairs it in parallel;
+- `controlled_provider`: it was being repaired in parallel (im4). After the repair it passed (73 PASS) on main `de9df35`, whose guest sources are the ones this kernel was built from;
 - `controlled_crypto`: needs prepared kernel headers;
 - `mapped`: 6m4 did not run it either.
 
@@ -164,7 +164,7 @@ against the pinned manifest passed. `check_candidate.py` refused all 26
 real-copy mutations for their expected reasons, including the real CGO0
 daemon `480713c2…`. The original and the restored copy passed again.
 
-The tooling now admits only this manifest, and `FD_ATTR` holds it:
+`controller.ADMITTED` and `rocky_kernel.py` now name only this manifest, and `FD_ATTR` holds it (the offline `admit.py` still accepts older containers):
 - refused as superseded: the second r21 `f21450ec…` (R21-1), the first r21
   `1428d4db…` and every earlier candidate;
 - still quarantined: `7e962627…`.
