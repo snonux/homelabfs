@@ -322,8 +322,10 @@ for declaration in ['enum hfs_view_scope {', 'struct hfs_enrollment {']:
 (out/'enrollment_struct.inc').write_text('\n'.join(parts)+'\n')
 # The session embeds an x84 allocation waitqueue, the terminal ack cells
 # (struct hfs_terminal_ack) and, since hh4, abandon_work (a work_struct);
-# all are opaque to the provider tests, which never touch a session. Its
-# 6m4 budget_users atomic_t comes from compat.h.
+# all are opaque to the provider tests. Only sizeof(struct hfs_session)
+# reaches them, through hfs_controlled_base_charge, whose assertions are
+# loose bounds, so these shim sizes need not match the kernel's. Its 6m4
+# budget_users atomic_t comes from compat.h.
 session_parts = ['typedef pthread_mutex_t spinlock_t;',
                  'typedef int wait_queue_head_t;',
                  'struct work_struct { void (*func)(struct work_struct *); };',
