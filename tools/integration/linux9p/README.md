@@ -2963,3 +2963,97 @@ from recall cleanup and BLOCKED re-sends. While no recall runs (xf4
 advances, vj4 self admissions), they stay charged until a retirement path
 reaches them.
 
+## A refused VIEW_RETIRE is answered BLOCKED (`km4`)
+
+In zq3-r22 R22-1 ([run record](../../../docs/lab/results/20261126-zq3-r22/README.md#r22-1-t1s-create-of-group-tail-fails-enospc-after-33-s-and-both-sessions-block)),
+T1's `create(group-tail)` returned ENOSPC after 33 s, and m0 blocked on
+`uncertain control result on VIEW_RETIRE (-110)`. The owner snapshots
+prove the following sequence:
+
+- **The VIEW_RETIRE was access child 1's.** m0's cleanup worker sent it at
+  the end of child 1's lease cleanup (`hfs_mmap.c`: `hfs_retire`, then
+  `hfs_view_retire`). 6m4's `hfs_retire_shared` sends no VIEW_RETIRE.
+- **The controller had no reason to refuse it.** Child 1's family had
+  tickets 1-5 GRANTED with matching ids, child 1 held no active lease and
+  no recall ran.
+- **The physical check refused it without an answer.** The runtime
+  `Facts.CheckPhysical` (`factsLedger.checkRetire`) refuses any retirement
+  while any lease of the scope is active. Child 2's two observation leases
+  and the T1 process's were active. The refusal was a bare `WouldBlock`,
+  which the host transport retries in its pending ring and never answers.
+  Both owner snapshots still show the cell `executing`.
+- **The guest waited out its 30 s bound.** It fetched AGAIN (`exporter
+  ERROR -`) until the bound expired, and then blocked m0.
+- **The cleanup worker deadlocked itself.** The leases that kept the
+  retirement refused could only be released by the same single-threaded
+  cleanup worker that was waiting.
+- **The CREATE waited on the same exchange.** Its charge failed ENOSPC, and
+  6m4's retry called `hfs_retire(m0)`, which waited for
+  `session->retirement`. `hfs_view_retire` holds that mutex for its whole
+  round. Once the VIEW_RETIRE timed out, the session was
+  `transport_failed`, so the RETIRE that followed failed at once and the
+  CREATE kept its ENOSPC.
+
+The fix is in the host daemon (`internal/viewcontrol/retirement.go`,
+`internal/controlledruntime/facts.go`):
+
+- `checkRetire` returns `viewcontrol.ErrRetirementHeld`, which still wraps
+  `fsapi.WouldBlock`.
+- `Controller.retire` answers it `BLOCKED` at the unchanged floor, exactly
+  `retirementReply`'s fallback, so `CheckResponse` accepts it.
+- The guest already handles a BLOCKED VIEW_RETIRE: it records
+  `view->retire_blocked` and offers the range again later (re4). Its
+  cleanup worker moves on, so it can release the leases that blocked the
+  retirement.
+- The domain-wide rule itself is unchanged.
+
+The guest change is the log line only, in patch 0003 (`hfs_session.c`).
+`hfs_retire_shared` now logs every round with `pr_info_ratelimited`, so the
+next run shows whether 6m4's retire-and-retry ran and what it freed:
+
+```text
+9p-hfs: session <uuid> retired under charge pressure: own retire <errno> freed <n> requests, <k> of <m> other sessions freed <n>; retrying the charge once
+```
+
+If nothing was freed, the line ends with `nothing freed, the charge fails`
+instead. The counts compare `nr_requests` before and after each
+`hfs_retire` (`hfs_retire_counted`). View tickets are not retired on this
+path. The series was regenerated with `export.py --task km4` (0003 only).
+
+Tests:
+
+- **Host, red first:** the recall-model test
+  `TestZQ3ChildRetireBesideHeldObservation` (`internal/controlledruntime`,
+  the assembled runtime with the real Facts) runs a holder's observation
+  lease while child 1's cleanup retires.
+  - Before the fix it failed with `m0 access child 1 cleanup VIEW_RETIRE
+    NO_REPLY after 30s`.
+  - Now the VIEW_RETIREs answer BLOCKED. After the holder's release, the
+    next cleanup retires child 1's acquisition family (floor 1).
+  - `TestFactsRetireStaysDomainWide` checks `ErrRetirementHeld` for an
+    active lease and for an open reservation, and that the check passes
+    once neither remains.
+- **Guest, red first:** controlled_received `package` failed on the 6m4
+  series with `missing retire-and-retry log line`. It now passes, and the
+  line carries the exact counts.
+  - The consumer's stderr is copied asynchronously, so the check waits up
+    to 10 s for the line. The first `both` run failed `package` without
+    that wait.
+- **Other harnesses on the km4 series:**
+  - a fresh `prepare.py` tree applies it with fuzz zero, and `fs/9p/` and
+    `net/9p/` compile without warnings (`build.py --module-objects`);
+  - `tests/controlled` and `controlled_provider` pass;
+  - controlled_received `--scenario both` passes every stage.
+
+Not covered:
+
+- `hfs_retire` still retires only the oldest run of claims with one set of
+  credentials per round. In r22 that was claims 40-41 of 40-46.
+- `hfs_retire_shared` does not offer view tickets.
+- A family stays charged while another process of the mount holds a lease.
+  The guest offers it again only through re4's kicks and the next cleanup
+  packet.
+- Which lane the r22 CREATE lacked is not recorded.
+- The r23 candidate needs the daemon rebuilt for the fix, and the guest
+  kernel for the log line. The exporter is unchanged.
+

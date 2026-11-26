@@ -9,6 +9,7 @@ import (
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
+	"github.com/snonux/homelabfs/internal/viewcontrol"
 )
 
 // releaseLedger is a ledger of domain "a" at fence 3 holding the older lease
@@ -138,16 +139,22 @@ func releaseCases() []releaseCase {
 }
 
 // TestFactsRetireStaysDomainWide: retirement still refuses while any lease or
-// open reservation of the domain remains.
+// open reservation of the domain remains, with viewcontrol.ErrRetirementHeld
+// (km4: the controller answers it BLOCKED instead of a never-answered
+// WouldBlock), and passes once neither remains.
 func TestFactsRetireStaysDomainWide(t *testing.T) {
 	l, _, _ := releaseLedger(t)
-	if err := l.checkRetire(guestbridge.Context{Session: "a"}); !errors.Is(err, fsapi.WouldBlock) {
+	if err := l.checkRetire(guestbridge.Context{Session: "a"}); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
 		t.Fatalf("retire beside an active lease: %v", err)
 	}
 	l.Leases = nil
 	addReservation(&l, "older", "RESERVED")
-	if err := l.checkRetire(guestbridge.Context{Session: "a"}); !errors.Is(err, fsapi.WouldBlock) {
+	if err := l.checkRetire(guestbridge.Context{Session: "a"}); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
 		t.Fatalf("retire beside an open reservation: %v", err)
+	}
+	l.Reservations = nil
+	if err := l.checkRetire(guestbridge.Context{Session: "a"}); err != nil {
+		t.Fatalf("retire with no owner left: %v", err)
 	}
 }
 

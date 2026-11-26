@@ -2296,6 +2296,22 @@ func (p *packageRig) expect(t *testing.T, verb string, session int, args string,
 	}
 }
 
+// logged requires the consumer's stderr (pr_info_ratelimited in compat.h)
+// to hold hfs_retire_shared_note's line with this tail (km4, zq3-r22 R22-1:
+// the guest log must show whether the retire-and-retry path ran and what it
+// freed). The consumer's stderr is copied by its own goroutine, so the line
+// may arrive after the action's stdout reply: wait up to 10 s for it.
+func (p *packageRig) logged(t *testing.T, tail string) {
+	t.Helper()
+	want := "retired under charge pressure: " + tail
+	for deadline := time.Now().Add(10 * time.Second); !strings.Contains(p.c.diagnostics.String(), want); {
+		if time.Now().After(deadline) {
+			t.Fatalf("missing retire-and-retry log line %q in:\n%s", tail, p.c.diagnostics.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // 6m4 (zq3-r21 R21-1): a retained request keeps its full completion package
 // until retirement, and the ordinary bytes are global across mounts. When the
 // partition still funds the next request's transport reservation but not its
@@ -2309,8 +2325,11 @@ func TestControlledReceivedActualPackageRetirement(t *testing.T) {
 			p := newPackageRig(t, protocol)
 			// Session 1 has nothing to retire: session 0's ROOT/CREATE must go.
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, 0, 1)
+			// km4: the round is logged with what it freed.
+			p.logged(t, "own retire -11 freed 0 requests, 1 of 1 other sessions freed 2; retrying the charge once")
 			// Session 1's GETATTR result stays held; session 0 has none left.
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, -28, 0)
+			p.logged(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0; nothing freed, the charge fails")
 			// Session 0's own retirable GETATTR, same session.
 			p.c.action("REQUEST", 0, "GETATTR "+p.path, 0)
 			p.c.action("REPLIES_DROP", 0, "", 0)

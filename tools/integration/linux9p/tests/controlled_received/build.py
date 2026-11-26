@@ -102,7 +102,9 @@ def main():
                 'hfs_request_bind_drain', 'hfs_request_drain', 'hfs_cleanup_opcode', 'hfs_call_control_bytes',
                 'hfs_call_admit_locked', 'hfs_call_dequeue', 'hfs_call_woken', 'hfs_call_sleep',
                 'hfs_call_admit', 'hfs_call_request_free', 'hfs_call_reserve',
-                'hfs_call_prepare', 'hfs_call_number_locked', 'hfs_call_once', 'hfs_call', 'hfs_retirement_cut_new', 'hfs_retirement_cut_free', 'hfs_retire', 'hfs_retire_shared', 'hfs_result_adopt',
+                'hfs_call_prepare', 'hfs_call_number_locked', 'hfs_call_once', 'hfs_call', 'hfs_retirement_cut_new', 'hfs_retirement_cut_free', 'hfs_retire',
+                # km4: hfs_retire_shared's counted retire and its log line.
+                'hfs_retire_counted', 'hfs_retire_shared_note', 'hfs_retire_shared', 'hfs_result_adopt',
                 'hfs_readdir_cleanup', 'hfs_readdir_forget', 'hfs_session_free', 'hfs_session_destroy', 'hfs_enrollment_validate', 'hfs_enrollment_lanes', 'v9fs_hfs_register_provider']
     definitions = []
     for name in selected:

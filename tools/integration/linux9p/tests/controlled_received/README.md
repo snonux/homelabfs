@@ -165,7 +165,12 @@ C7 adds these test-only commands, all invoking the maintained production helpers
   retirable ROOT/CREATE (later GETATTR) requests and session 1 none: session
   1's call must succeed after exactly one RETIRE (session 0's), the same
   session's call after one RETIRE of its own, and with nothing retirable
-  anywhere each refuses ENOSPC with no native bytes.
+  anywhere each refuses ENOSPC with no native bytes. Since km4 (zq3-r22
+  R22-1) the request test also requires the consumer's stderr to carry
+  `hfs_retire_shared_note`'s line for session 1's two rounds: `own retire
+  -11 freed 0 requests, 1 of 1 other sessions freed 2; retrying the charge
+  once`, then `... 0 of 1 other sessions freed 0; nothing freed, the charge
+  fails`.
 * `CLOSE_PENDING` invokes actual provider STOP/retain while dirty pins, results
   and cookies remain. It asserts refusal preserves every owner; subsequent
   funded controls must use the typed closing path. It is no native unmount.

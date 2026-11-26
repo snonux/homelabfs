@@ -278,17 +278,23 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 // checkRetire: retirement cannot clear an active physical or dirty owner of
 // the domain. The controller's actual STOP/install/reopen loop closes these
 // first. A refused retirement only leaves the guest's protected ticket floor
-// where it is (the guest ignores hfs_view_retire's result), so it stays
-// domain-wide.
+// where it is, so it stays domain-wide.
+//
+// The refusal is viewcontrol.ErrRetirementHeld, which the controller answers
+// BLOCKED (task km4). It was a bare WouldBlock, which the transport retried
+// without ever answering the cell; but the guest waits for the reply (up to
+// its 30 s exchange deadline, holding session->retirement and its cleanup
+// worker), so in zq3-r22 (R22-1) one child's VIEW_RETIRE beside another
+// process's active observation lease blocked m0.
 func (l factsLedger) checkRetire(scope guestbridge.Context) error {
 	for _, lease := range l.Leases {
 		if lease.Lease.Scope == scope && lease.Active {
-			return fsapi.WouldBlock
+			return viewcontrol.ErrRetirementHeld
 		}
 	}
 	for _, reservation := range l.Reservations {
 		if reservation.Reservation.Scope == scope && reservation.Status != "CLOSED" {
-			return fsapi.WouldBlock
+			return viewcontrol.ErrRetirementHeld
 		}
 	}
 	return nil
