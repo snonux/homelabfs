@@ -25,6 +25,13 @@ ssize_t primitive_pwrite(int,const void *,size_t,off_t);
 static DEFINE_MUTEX(hfs_provider_lock);
 static const struct hfs_provider *hfs_provider;
 static atomic_t hfs_active_sessions = ATOMIC_INIT(0);
+/* 6m4: hfs_session.c's global session list and hfs_retire_shared's wait.
+ * Fixture sessions join the list only inside the PACKAGE_* actions
+ * (share_sessions), so every other action keeps per-session retirement.
+ */
+static LIST_HEAD(hfs_sessions);
+static spinlock_t hfs_sessions_lock=PTHREAD_MUTEX_INITIALIZER;
+wait_queue_head_t hfs_budget_wait;
 static unsigned module_put_count,client_destroy_count;
 void primitive_module_put(void *owner) { (void)owner;module_put_count++; }
 static uuid_t primitive_process_uuid;
@@ -630,6 +637,27 @@ static void advance_stale_command(unsigned id,struct fixture_session *f)
  assert(!s->blocked);
  done(id,err,NULL,0);
 }
+/* 6m4: list every live fixture session (hfs_sessions, as v9fs_hfs_mount
+ * does) for one PACKAGE_* call, or unlist them again; returns the summed
+ * nr_requests of the listed sessions. */
+static u32 share_sessions(bool on) {
+ u32 requests=0;
+ spin_lock(&hfs_sessions_lock);
+ for(u32 i=0;i<hfs_controlled_registry->nr_mounts;i++){
+  struct hfs_session *s=fixtures[i].session;
+  if(!s||fixtures[i].destroyed)continue;
+  if(on)list_add_tail(&s->global,&hfs_sessions);else list_del_init(&s->global);
+  requests+=s->nr_requests;
+ }
+ spin_unlock(&hfs_sessions_lock);
+ return requests;
+}
+/* 6m4: hold ordinary bytes so that only `leave` stays free; *pressure owns them. */
+static void package_pressure(struct hfs_session *session,u64 leave,void **pressure) {
+ u64 remaining=hfs_controlled_registry->budget.ordinary_bytes-hfs_controlled_ordinary_used;
+ assert(remaining>leave+sizeof(struct hfs_controlled_credit));
+ assert(!hfs_controlled_reserve(session,remaining-leave-sizeof(struct hfs_controlled_credit),false,pressure));
+}
 static void command(char *line) {
  char operation[32];unsigned id,index;int consumed=0;
  assert(sscanf(line,"%31s %u %u %n",operation,&id,&index,&consumed)>=3&&index<(getenv("HFS_C6_BACKEND_ONLY")?carrier->session_count:hfs_controlled_registry->nr_mounts));
@@ -1139,23 +1167,42 @@ static void command(char *line) {
  /* 6m4 (zq3-r21 R21-1): one ordinary GETATTR through the actual hfs_call
   * while the ordinary byte partition has room for the request's transport
   * reservation but not for its completion package. Retained, retirable
-  * requests (each still holding its own full package) are what a retirement
-  * can return. A refusal must leave claim, cell, request and byte counters
-  * unchanged; success keeps the result held (users) for a later refusal. */
+  * requests (each still holding its own full package), of this or the other
+  * listed session, are what a retirement can return. A refusal must leave
+  * claim, cell, request and byte counters unchanged; success must have
+  * retired at least one request across the sessions and keeps the result
+  * held (users) for a later refusal. */
  if(!strcmp(operation,"PACKAGE_REQUEST")){
   struct hfs_session *session=f->session;void *pressure=NULL;
   u64 request_bytes=(hfs_controlled_consumed(session)?4ULL:16ULL)*1024*1024+sizeof(struct hfs_controlled_credit);
-  u64 leave=request_bytes+(1ULL<<20),remaining=hfs_controlled_registry->budget.ordinary_bytes-hfs_controlled_ordinary_used;
+  u64 leave=request_bytes+(1ULL<<20);
   assert(hfs_completion_capacity(false,HFS_BODY_MAX)>leave);
-  assert(remaining>leave+sizeof(struct hfs_controlled_credit));
-  assert(!hfs_controlled_reserve(session,remaining-leave-sizeof(struct hfs_controlled_credit),false,&pressure));
-  u64 next=session->next_claim,cell=session->next_cell,ordinary=hfs_controlled_ordinary_used;u32 requests=session->nr_requests;
+  package_pressure(session,leave,&pressure);
+  u64 next=session->next_claim,cell=session->next_cell,ordinary=hfs_controlled_ordinary_used;u32 requests=session->nr_requests,total=share_sessions(true);
   struct hfs_buf args={0};struct hfs_json *result=NULL;assert(!hfs_args_init(&args));args.len=decode_hex(line+consumed,args.data,args.cap);
   int err=hfs_call(session,"GETATTR",&args,&f->credential,false,&result);
-  if(err){assert(err==-ENOSPC&&!result);assert(session->next_claim==next&&session->next_cell==cell&&session->nr_requests==requests&&hfs_controlled_ordinary_used==ordinary);}
-  else{assert(session->next_claim==next+1&&session->nr_requests<=requests&&session->next_cell>cell&&result->owner);
+  u32 after=share_sessions(false);
+  if(err){assert(err==-ENOSPC&&!result);assert(session->next_claim==next&&session->next_cell==cell&&session->nr_requests==requests&&after==total&&hfs_controlled_ordinary_used==ordinary);}
+  else{assert(session->next_claim==next+1&&after<=total&&result->owner);
    assert(f->nr_held_results<ARRAY_SIZE(f->held_results));f->held_results[f->nr_held_results++]=result;result=NULL;}
   hfs_controlled_unreserve(session,pressure);hfs_buf_free(&args);done(id,err,NULL,0);return;
+ }
+ /* 6m4: the same for one VIEW_ACQUIRE (ordinary) ticket from the actual
+  * hfs_view_ticket_prepare: room for its 1 MiB reservation and family
+  * credit, not for its view completion package. The prepared ticket is
+  * put again at once; a refusal leaves tickets, requests and bytes as they
+  * were. */
+ if(!strcmp(operation,"PACKAGE_TICKET")){
+  struct hfs_session *session=f->session;void *pressure=NULL;struct hfs_view_ticket *ticket=NULL;
+  u64 leave=(hfs_controlled_consumed(session)?1ULL:4ULL)*1024*1024+sizeof(struct hfs_view_family)+16384+2*sizeof(struct hfs_controlled_credit)+(1ULL<<20);
+  assert(hfs_completion_capacity(true,HFS_VIEW_BODY_MAX)>leave);
+  package_pressure(session,leave,&pressure);
+  u64 cell=session->next_cell,ordinary=hfs_controlled_ordinary_used;u32 tickets=session->nr_view_tickets,total=share_sessions(true);
+  int err=hfs_view_ticket_prepare(session,&f->credential,false,&ticket);
+  u32 after=share_sessions(false);
+  if(err){assert(err==-ENOSPC&&!ticket);assert(session->next_cell==cell&&session->nr_view_tickets==tickets&&after==total&&hfs_controlled_ordinary_used==ordinary);}
+  else{assert(ticket&&ticket->completion&&after<total&&session->nr_view_tickets==tickets+1);hfs_view_ticket_put(ticket);assert(session->nr_view_tickets==tickets);}
+  hfs_controlled_unreserve(session,pressure);done(id,err,NULL,0);return;
  }
  if(!strcmp(operation,"CLEANUP_REQUEST")){
   char op[32];int used=0;assert(sscanf(line+consumed,"%31s %n",op,&used)==1);

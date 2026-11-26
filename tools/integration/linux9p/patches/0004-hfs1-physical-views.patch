@@ -2609,7 +2609,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,2355 @@
+@@ -0,0 +1,2397 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -2969,34 +2969,76 @@ new file mode 100644
 +	}
 +}
 +
++/* One attempt at a ticket's complete charge: its 1 MiB (4 MiB unconsumed)
++ * reservation, a family record's credit and its view completion package
++ * (about 24.5 MiB with HFS_VIEW_BODY_MAX). A failed attempt keeps none.
++ */
++static int hfs_view_ticket_charge_once(struct hfs_session *session, bool control,
++				       void **credit, void **family_credit,
++				       struct hfs_completion **completion)
++{
++	int err;
++
++	err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 1ULL : 4ULL) * 1024 * 1024,
++					 control, credit);
++	if (err)
++		return err;
++	err = session->provider->reserve(session, sizeof(struct hfs_view_family) + 16384,
++					 control, family_credit);
++	if (!err) {
++		err = hfs_completion_new(session, control, true, HFS_VIEW_BODY_MAX, completion);
++		if (!err)
++			return 0;
++		session->provider->unreserve(session, *family_credit);
++	}
++	session->provider->unreserve(session, *credit);
++	*credit = *family_credit = NULL;
++	return err;
++}
++
++/* 6m4 (zq3-r21 R21-1): the ticket's whole charge, retried once after a
++ * shared retirement (hfs_retire_shared) on ENOSPC/EAGAIN, as hfs_call's
++ * requests are. Before 6m4 an acquisition under ordinary byte pressure
++ * failed ENOSPC at once while retirable requests, of this or another mount,
++ * held the bytes. Retiring requests returns only their own lane's bytes; a
++ * control ticket after ordinary retirements (or the reverse) still fails
++ * cleanly. Unretired view tickets are not offered here (hfs_view_retire).
++ */
++static int hfs_view_ticket_charge(struct hfs_session *session, bool control, void **credit,
++				  void **family_credit, struct hfs_completion **completion)
++{
++	int err = hfs_view_ticket_charge_once(session, control, credit, family_credit,
++					      completion);
++
++	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire_shared(session))
++		err = hfs_view_ticket_charge_once(session, control, credit, family_credit,
++						  completion);
++	return err;
++}
++
 +int hfs_view_ticket_prepare(struct hfs_session *session, const struct hfs_cred *cred,
 +			bool control, struct hfs_view_ticket **out)
 +{
 +	struct hfs_view_ticket *ticket;
 +	struct hfs_view_family *family, *candidate;
++	struct hfs_completion *completion = NULL;
 +	void *credit, *family_credit;
 +	int err;
 +
 +	*out = NULL;
 +	if (session->bridge_minor != 1 && session->bridge_minor != 4)
 +		return -EOPNOTSUPP;
-+	err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 1ULL : 4ULL) * 1024 * 1024,
-+					 control, &credit);
++	err = hfs_view_ticket_charge(session, control, &credit, &family_credit, &completion);
 +	if (err)
 +		return err;
-+	err = session->provider->reserve(session, sizeof(*candidate) + 16384,
-+					 control, &family_credit);
-+	if (err)
-+		goto unreserve;
 +	ticket = kzalloc(sizeof(*ticket), GFP_KERNEL);
 +	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
 +	if (!ticket || !candidate) {
 +		err = -ENOMEM;
 +		goto allocation;
 +	}
-+	err = hfs_completion_new(session, control, true, HFS_VIEW_BODY_MAX, &ticket->completion);
-+	if (err)
-+		goto allocation;
++	ticket->completion = completion;
++	completion = NULL;
 +	ticket->reservation = credit;
 +	candidate->reservation = family_credit;
 +	INIT_LIST_HEAD(&ticket->list);
@@ -3096,10 +3138,10 @@ new file mode 100644
 +allocation:
 +	if (ticket)
 +		hfs_completion_close(ticket->completion);
++	hfs_completion_close(completion); /* not yet moved into the ticket */
 +	kfree(candidate);
 +	kfree(ticket);
 +	session->provider->unreserve(session, family_credit);
-+unreserve:
 +	session->provider->unreserve(session, credit);
 +	return err;
 +}

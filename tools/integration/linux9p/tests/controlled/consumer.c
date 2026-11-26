@@ -106,6 +106,7 @@ enum hfs_view_scope {
    HFS_SCOPE_NORMAL_PUBLIC = 1,
    HFS_SCOPE_CONTROLLED_LOCAL = 2
 };
+typedef atomic_int atomic_t; /* 6m4: hfs_session.budget_users */
 #include "types.inc"
 /* Use the production disabled-C6 definitions for these closed older profiles.
  * Limit the unused-parameter suppression to the production inline headers.
@@ -198,6 +199,10 @@ static void uuid_gen(uuid_t *id) {
 static int hfs_retire(struct hfs_session *s) {
    (void)s;
    return -EOPNOTSUPP;
+}
+/* 6m4: hfs_call_reserve's shared retirement; nothing retires here either. */
+static int hfs_retire_shared(struct hfs_session *s) {
+   return hfs_retire(s);
 }
 static struct hfs_view *hfs_view_get(struct hfs_session *s) {
    (void)s;

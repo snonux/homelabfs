@@ -267,6 +267,9 @@ static inline int atomic_read(const atomic_t *value) { return atomic_load(value)
 static inline void atomic_inc(atomic_t *value) { atomic_fetch_add(value,1); }
 static inline int atomic_read_acquire(const atomic_t *value) { return atomic_load_explicit(value,memory_order_acquire); }
 static inline int atomic_dec_return_release(atomic_t *value) { return atomic_fetch_sub_explicit(value,1,memory_order_release)-1; }
+/* 6m4: hfs_retire_shared's pin array and pin release. */
+#define kmalloc_array(n,s,g) kcalloc(n,s,g)
+static inline bool atomic_dec_and_test(atomic_t *value) { return atomic_fetch_sub(value,1)==1; }
 void p9_client_destroy(struct p9_client *);
 const struct cred *primitive_get_cred(const struct cred *);
 void primitive_put_cred(const struct cred *);

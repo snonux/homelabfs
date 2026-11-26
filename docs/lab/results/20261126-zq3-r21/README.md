@@ -112,6 +112,7 @@ The guest frees a request only after the host retires it, and a ticket only afte
 How that produced each failure:
 - **`fchmod`:** its 4 MiB reservation fit and its 30.9 MiB package did not. `hfs_call_reserve` retired and retried only when the reservation itself failed. The package was taken afterwards in `hfs_call_prepare` (`hfs_completion_new`), with no retirement. So the call returned ENOSPC locally, about 0.2 ms after it was invoked, and sent nothing.
 - **The two cleanup calls:** the following DESCRIPTION_RELEASE (m0) and PROCESS_EXIT (m1) failed the same way and blocked both sessions. The view workers then stopped with -112.
+  - m1's PROCESS_EXIT failed for want of m0 retiring. m1 had nothing of its own to retire (floor = high = 10). The bytes were held by m0's retirable requests, and m0 retires only under its own allocation pressure or in recall cleanup, and no recall ran. Even with m0's `fchmod` fixed alone, a later m1 call could still hit this.
 - **The host floor:** it stayed at 41 (the failure OBSERVE and both snapshots). The host accepts RETIRE with an exited issuer's credentials (`retireControlled`, `allowExited`). So a retirement attempt would have retired claims 42-44 (one credential run) and returned about 105 MiB, enough for the `fchmod`.
 
 Ruled out:
@@ -124,7 +125,14 @@ Contributing, not a bug proven here:
 - The 7 acquisition tickets (about 179 MiB) stayed charged. Before this run, recalls disposed cache pages, and the cleanup work ran `hfs_retire` and `hfs_view_retire` along the way (`hfs_mmap.c`). With xf4 advances and vj4 self admissions, no recall ran during T1. Retirement then happened only under allocation pressure.
 - Group-tail is also the deepest point T1 has reached in any run.
 
-Fix: task 6m4 (series regenerated, `hfs_session.c` only). `hfs_call_reserve` now takes the reservation and the package together, and on ENOSPC/EAGAIN from either it releases both, retires once and retries. The Red-first regression is controlled_received `--scenario package`.
+Fix: task 6m4 (series regenerated: patch 0003 `hfs.h` and `hfs_session.c`, patch 0004 `hfs_lease.c`).
+- **Requests:** `hfs_call_reserve` takes the reservation and the package together. On ENOSPC/EAGAIN from either it releases both, runs `hfs_retire_shared`, and retries once.
+- **`hfs_retire_shared`:** retires the caller's session and every other listed session of the same provider, since the budget is global. The other sessions are pinned under `hfs_sessions_lock` and retired with no lock held; kill_sb and a failed mount wait for those pins before retaining or freeing a session.
+- **Lease tickets:** `hfs_view_ticket_prepare` gets the same treatment for its reservation, family credit and view package.
+- **What it cannot fix:** retirement returns only the bytes of the retired requests' own lane. When nothing on that lane is retirable anywhere, the call still fails cleanly with ENOSPC.
+- **Not covered:** unretired view tickets are still not offered for retirement while no recall runs.
+
+The Red-first regressions are controlled_received `--scenario package` (`TestControlledReceivedActualPackageRetirement`, `TestControlledReceivedActualTicketPackageRetirement`).
 
 **Effect.** T2-T11 did not run. In particular, the T3 s64 peer-rename guard, T7 (pod) and the hh4/dh4 paths in T9-T11 remain without a real run.
 
@@ -165,12 +173,9 @@ Fix: task 6m4 (series regenerated, `hfs_session.c` only). `hfs_call_reserve` now
 
 ## Follow-up
 
-- **R21-1 (task 6m4):** decoded and fixed in the guest series (`hfs_session.c`, patch 0003); see the root cause above.
+- **R21-1 (task 6m4):** decoded and fixed in the guest series (patches 0003 and 0004); see the root cause above.
   - r22 needs a new candidate build: the guest kernel changes, and the daemon and exporter do not.
-  - Not covered by 6m4:
-    - one session can still starve another that has nothing to retire, because the bytes are global but `hfs_retire` is per session;
-    - `hfs_view_ticket_prepare` still takes its package without a retirement retry;
-    - acquisition tickets stay charged while no recall runs.
+  - Not covered by 6m4: acquisition tickets stay charged while no recall runs, and a retirement returns only its own lane's bytes.
 - **Validated by this run:**
   - sj4 (R20-1);
   - tj4/wj4 (advances fire);

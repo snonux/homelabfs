@@ -2234,57 +2234,108 @@ func TestControlledReceivedActualCleanupByteFunding(t *testing.T) {
 	}
 }
 
+// packageRig is the 6m4 fixture: session 1 holds its own ROOT grant but no
+// retained request (its ROOT is retired at once), session 0 adopts ROOT and
+// a CREATEd file and keeps both requests retained but unborrowed, so only
+// session 0 has anything to retire. retires counts host RETIRE exchanges.
+type packageRig struct {
+	c           *receivedCarrier
+	path, root1 string
+}
+
+func newPackageRig(t *testing.T, protocol guestbridge.Protocol) *packageRig {
+	r := newSourceRigDomainsUnstarted(t, protocol, 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	request := func(session int, op string, args any) []byte {
+		return c.action("REQUEST", session, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+	}
+	root1 := receivedResult(t, request(1, "ROOT", map[string]any{}))
+	c.action("ADOPT_ROOT_PREPARE", 1, "", 0)
+	c.action("REPLIES_DROP", 1, "", 0)
+	c.action("RETIRE", 1, "", 0)
+	root := receivedResult(t, request(0, "ROOT", map[string]any{}))
+	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+	caps := receivedResult(t, request(0, "CREATE", map[string]any{"parent": root[0], "name": "7061636b616765", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+	var path guestbridge.Capability
+	for _, cap := range caps {
+		if cap.Kind == "PATH" {
+			path = cap
+		}
+	}
+	if path.Kind == "" {
+		t.Fatal("missing actual CREATE PATH capability")
+	}
+	c.action("ADOPT_DESCRIPTION", 0, "CREATE", 0)
+	c.action("REPLIES_DROP", 0, "", 0)
+	return &packageRig{c: c,
+		path:  hex.EncodeToString(mustRuntimeJSON(t, map[string]any{"object": path})),
+		root1: hex.EncodeToString(mustRuntimeJSON(t, map[string]any{"object": root1[0]}))}
+}
+
+func (p *packageRig) retires() int {
+	n := 0
+	for _, command := range p.c.commands {
+		if command.Op == "RETIRE" {
+			n++
+		}
+	}
+	return n
+}
+
+// expect runs one PACKAGE_* action and checks its RETIRE count; a refusal
+// must also emit no native command at all.
+func (p *packageRig) expect(t *testing.T, verb string, session int, args string, want, retired int) {
+	t.Helper()
+	before, commands := p.retires(), len(p.c.commands)
+	p.c.action(verb, session, args, want)
+	if p.retires() != before+retired {
+		t.Fatalf("%s session%d: %d RETIRE exchanges, want %d", verb, session, p.retires()-before, retired)
+	}
+	if want != 0 && len(p.c.commands) != commands {
+		t.Fatalf("refused %s session%d emitted native bytes", verb, session)
+	}
+}
+
 // 6m4 (zq3-r21 R21-1): a retained request keeps its full completion package
-// until retirement. When the ordinary partition still funds the next request's
-// transport reservation but not its package, the actual hfs_call must retire
-// and retry instead of failing ENOSPC locally; with nothing retirable (the
+// until retirement, and the ordinary bytes are global across mounts. When the
+// partition still funds the next request's transport reservation but not its
+// package, the actual hfs_call must retire and retry instead of failing
+// ENOSPC locally: its own session's requests, and (r21's m1, which had
+// nothing to retire) another session's. With nothing retirable anywhere (the
 // oldest request's result still held) it still refuses without a claim/cell.
 func TestControlledReceivedActualPackageRetirement(t *testing.T) {
 	for _, protocol := range []guestbridge.Protocol{guestbridge.MappedProtocol(), guestbridge.TerminalProtocol()} {
 		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
-			r := newSourceRigDomainsUnstarted(t, protocol, 2, receivedInitialIDMap)
-			c := startReceivedCarrier(t, r)
-			request := func(op string, args any) []byte {
-				return c.action("REQUEST", 0, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
-			}
-			root := receivedResult(t, request("ROOT", map[string]any{}))
-			c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
-			caps := receivedResult(t, request("CREATE", map[string]any{"parent": root[0], "name": "7061636b616765", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
-			var path guestbridge.Capability
-			for _, cap := range caps {
-				if cap.Kind == "PATH" {
-					path = cap
-				}
-			}
-			if path.Kind == "" {
-				t.Fatal("missing actual CREATE PATH capability")
-			}
-			c.action("ADOPT_DESCRIPTION", 0, "CREATE", 0)
-			// ROOT and CREATE stay retained but unborrowed: retirable.
-			c.action("REPLIES_DROP", 0, "", 0)
-			getattr := hex.EncodeToString(mustRuntimeJSON(t, map[string]any{"object": path}))
-			retires := func() int {
-				n := 0
-				for _, command := range c.commands {
-					if command.Op == "RETIRE" {
-						n++
-					}
-				}
-				return n
-			}
-			before := retires()
-			c.action("PACKAGE_REQUEST", 0, getattr, 0)
-			if retires() != before+1 {
-				t.Fatalf("package pressure retired with %d RETIRE exchanges, want 1", retires()-before)
-			}
-			// The GETATTR result stays held, so the oldest request cannot retire.
-			before, commands := retires(), len(c.commands)
-			c.action("PACKAGE_REQUEST", 0, getattr, -28)
-			if retires() != before || len(c.commands) != commands {
-				t.Fatal("unretirable package pressure emitted native bytes")
-			}
-			c.action("RETIRE", 0, "", 0)
-			c.close()
+			p := newPackageRig(t, protocol)
+			// Session 1 has nothing to retire: session 0's ROOT/CREATE must go.
+			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, 0, 1)
+			// Session 1's GETATTR result stays held; session 0 has none left.
+			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, -28, 0)
+			// Session 0's own retirable GETATTR, same session.
+			p.c.action("REQUEST", 0, "GETATTR "+p.path, 0)
+			p.c.action("REPLIES_DROP", 0, "", 0)
+			p.expect(t, "PACKAGE_REQUEST", 0, p.path, 0, 1)
+			p.expect(t, "PACKAGE_REQUEST", 0, p.path, -28, 0)
+			p.c.action("RETIRE", 0, "", 0)
+			p.c.action("RETIRE", 1, "", 0)
+			p.c.close()
+		})
+	}
+}
+
+// 6m4: the same for a VIEW_ACQUIRE ticket (hfs_view_ticket_prepare), whose
+// 1 MiB reservation fits while its view completion package does not.
+func TestControlledReceivedActualTicketPackageRetirement(t *testing.T) {
+	for _, protocol := range []guestbridge.Protocol{guestbridge.MappedProtocol(), guestbridge.TerminalProtocol()} {
+		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
+			p := newPackageRig(t, protocol)
+			p.expect(t, "PACKAGE_TICKET", 1, "", 0, 1)
+			p.expect(t, "PACKAGE_TICKET", 1, "", -28, 0)
+			p.c.action("REQUEST", 0, "GETATTR "+p.path, 0)
+			p.c.action("REPLIES_DROP", 0, "", 0)
+			p.expect(t, "PACKAGE_TICKET", 0, "", 0, 1)
+			p.expect(t, "PACKAGE_TICKET", 0, "", -28, 0)
+			p.c.close()
 		})
 	}
 }
