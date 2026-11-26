@@ -529,7 +529,7 @@
    "runtime-guard.py": "fece96b3a42043a7434ee37fc0c38464addabe0eb2ba618d2fc54aafaa1f457e",
    "vms.sh": "136c8c0b364b7eed99b954bb231456ec3b10e032870260c91c9921eb003de6eb"
   },
-  "prep_source_vs_candidate": "git diff 21d8478 f584de4 -- internal cmd go.mod go.sum is empty: the prep and signer link the daemon's km4-changed packages (controlledruntime, viewcontrol) at the daemon's own revision",
+  "prep_source_vs_candidate": "git diff 21d8478 f584de4 -- internal cmd go.mod go.sum touches only internal/guestbridge/README.md (no Go source): the prep and signer link the daemon's km4-changed packages (controlledruntime, viewcontrol) at the daemon's own revision",
   "snapshot": "/home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/snapshot (git archive of f584de4, main HEAD at fill time: docs internal tools)",
   "workstation_ssh": {
    "package": "openssh-clients-10.6p1-1.fc45 (unchanged since zq3-r21)",

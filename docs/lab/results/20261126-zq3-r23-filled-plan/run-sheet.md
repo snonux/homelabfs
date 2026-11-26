@@ -112,7 +112,9 @@ zq3-r21 later-day refresh, commits `9b28254` and `18f268d`):
   (only the Phase 1 records are new);
 - a new transaction (#69 or later) that changed nothing pinned: refill
   `sh/n1-gate.py`'s expected transaction and the sheet's N1 lines (a
-  refresh commit, as `9b28254`), nothing else;
+  record fix: the gate does not read it), then n1-gate.py's hpin in
+  `session.sh`, and `session.sh`'s pin in the Phase 0 `sha256sum` list and
+  `pins.json` (hpin refuses a stale pin, so a missed step fails closed);
 - **a new stock kernel made the grub default while Rocky still runs
   `741.27.1` (the N1 kernel split): STOP.** Paul must approve a Rocky
   maintenance reboot into the new default first (as on 2026-11-26 06:46Z),

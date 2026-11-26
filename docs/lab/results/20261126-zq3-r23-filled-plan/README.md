@@ -240,8 +240,11 @@ class A step:
      default, UEFI vars, argv record, bundle and sessions, Rocky PID/lstart
      in `NG` and the Phase 5 helpers, staging);
    - a new transaction (#69 or later) that changed nothing pinned: refresh
-     `sh/n1-gate.py`'s expected transaction and the sheet's N1 lines only
-     (a refresh commit, as `9b28254`);
+     `sh/n1-gate.py`'s expected transaction and the sheet's N1 lines (the
+     gate does not read it, so this is a record fix). Changing
+     `sh/n1-gate.py` also means updating its hpin in `session.sh`, then
+     `session.sh`'s pin in the Phase 0 `sha256sum` list and in `pins.json`
+     (hpin refuses a stale pin, so a missed step fails closed);
    - a changed pod runtime: refill the pod template;
    - any Rocky restart (new PID, boot ID or UEFI vars) or f3 reboot: refill
      (an f3 reboot also unloads both modules, so Phase 1a changes);
@@ -267,9 +270,10 @@ class A step:
 ## Prep compatibility with the candidate daemon
 
 `hfs-runtime-prep` and the signer are built from `f584de4`; the daemon from
-`21d8478`. `git diff 21d8478 f584de4 -- internal cmd go.mod go.sum` is
-empty, so the prep code is exactly the candidate's (including the km4
-`controlledruntime`/`viewcontrol` changes both tools link).
+`21d8478`. `git diff 21d8478 f584de4 -- internal cmd go.mod go.sum` touches only
+`internal/guestbridge/README.md` (no Go source), so the prep code is exactly
+the candidate's (including the km4 `controlledruntime`/`viewcontrol` changes
+both tools link).
 
 The generated `generation.json`, `request-template.json` and
 `volume-init.json` have exactly zq3-r22's key structure.
