@@ -23,7 +23,9 @@ were clean.
 the run day, after Rocky's nightly dnf run (00:55 EET = 22:55 UTC) has
 stamped, Phase 0's recheck and fresh Phase 1 facts come first**, as the
 zq3-r21 later-day refresh did (commits `9b28254`, `18f268d`); see
-[Run-day refresh](#run-day-refresh).
+[Run-day refresh](#run-day-refresh). **The refresh ran at 2026-11-26
+22:56:44Z (run day 2026-11-27 EET): a record refresh** (dnf #69, nothing
+pinned changed); see [the result](#run-day-refresh-result-2026-11-26-225644z).
 
 The changes are:
 - the run ID (`zq3-r23`) and the native guard root
@@ -255,6 +257,44 @@ class A step:
 3. Paul's final GO on the (refreshed) sheet; the operator key is copied
    then.
 
+### Run-day refresh result (2026-11-26 22:56:44Z)
+
+Rocky's nightly run stamped `2026-11-27` at 00:55:07 EET (22:55:07Z) and
+wrote **dnf transaction #69** (2026-11-27 00:55, Upgrade, 2 packages:
+`rsync-3.2.7-4.el9_9`, `libgs-9.54.0-20.el9_9.1`); `needs-restarting -r`
+clean. The fill's own collector (`scratch/take-facts.sh`, with the newest
+transaction instead of #68 and a separate refresh stamp so the 20:15Z
+`STAMP` stays) then took read-only facts over the pinned host keys at
+22:56:44Z. Against 20:15Z:
+- **unchanged:** f3 boot `1794574308`; Rocky's bhyve PID `50982` and UTC
+  lstart `Thu Nov 26 14:51:24 2026`; boot ID `99de7fb2…`; running kernel
+  `5.14.0-741.27.1.el9_9` = grub default = `saved_entry`, `next_entry`
+  empty (no kernel split); Enforcing, no `/.autorelabel`; python3.9,
+  `authorized_keys` and the pod runtime (hashes and NEVRAs; `rocky-grub`
+  and `rocky-pod-runtime` byte-identical); UEFI vars `4f63d71b…`,
+  `rocky.conf`, vm-run, firmware, bridge members `re0 tap0`; f3
+  `/usr/bin/ssh`; `fdescfs.ko` (39) and `fusefs.ko` (40) loaded with no
+  fuse/fdesc mount (Phase 1a still runs); the r23 paths absent;
+- **iormesh:** every iormesh VM (iom1, iom2, iom3) Stopped, `/dev/vmm`
+  holds only `rocky`;
+- swap 0 used; memory (a record only): free 968,372 pages (3.97 GB),
+  inactive 1.71 GB, active 0.44 GB, wired 10.34 GB, ARC 9.04 GB;
+- launch facts differ only in the collection time and the interface
+  order (`tap0 wg0` swapped; only the set counts).
+
+Refilled (a record fix): `sh/n1-gate.py` `FACTS_TOP` #69 of 2026-11-27
+00:55 (`c354f923…`, was `710b4ae2…`), its hpin in `session.sh`, and
+`session.sh` `3e92efb9…` (was `ed65bbf4…`) in the sheet's Phase 0 list and
+[pins](pins.json) `fill_helpers`; `pins.json` `phase1_facts.run_day_refresh`
+records the facts and their hashes. `n1-gate.py phase1` reports
+`dnf_unchanged: true` for the 22:56:44Z record and false for the 20:15Z
+one; `gate` on the new records gives STOP at 22:57Z (within 35 min of
+00:55, expected), GO at 2026-11-27 12:00Z and STOP at 21:26Z. **Phase 0
+passes** with the new pins (argv verify, `check-argv`, `bootstrap.py
+check`, `check-retained9p.sh`, workstation ssh `d4c70b09…`, hpin, okpin,
+the six-file `sha256sum -c`), and `git diff --stat f584de4 main` over the
+tools is empty. The run's own Phase 1 is still taken on the run day.
+
 ## Inputs
 
 | Input | Value |
@@ -298,10 +338,10 @@ The generated `generation.json`, `request-template.json` and
 | 9. Window pins | `docs/lab/zq3-fdescfs-window/pins.json` at main (moved to the three r23 artifact pins) with `zq3-r1` → `zq3-r23`; equal to zq3-r22's renamed with the three new hashes. Synthetic fills (not pins): zq3-r8's real Phase 4 facts with the r23 hashes **pass**; zq3-r22's (= r21) hashes, the r20 or xc4 hashes **refuse** (`pinned artifact differs or missing`); facts with both modules loaded **refuse** (`fdescfs module present`): hence Phase 1a | r23 pins `22b2c45b…` |
 | 10. Signing watcher | zq3-r22's with `D`, the comments and **the signer pin** changed; tested with a fake signer (wrong hash, command, action and repeat refused; both exact requests signed; the real pin refuses the fake binary) | `11182a80…` |
 | 11. Process observer check | `sh/p4-observer.py` (**daemon pin `43238fe9…`**, staged path renamed); zq3-r22's real records, renamed and with `43238fe9…` substituted, **pass**; with their own daemon `c7b89648…` they are refused for the `sha256`, unrenamed also for the staged path; the `$NG` line (Rocky PID `50982`) passes the native guard's `parse_args` and `check_request` | `fa0d2c74…` |
-| 12. N1 gate helper | `sh/n1-gate.py` with `FACTS_TOP` still **#68 of 2026-11-26 00:55**. Fixed-time tests: 12:30Z GO, the real 20:15Z records GO at 20:30Z and 21:25Z and STOP at 21:26Z, 21:20Z and 21:25Z GO, 21:30Z, 22:56Z and 23:10Z STOP, the next day with the old Phase 1 (synthetic or real) STOP, fresh GO, a stale stamp STOP, 01:00Z GO; `phase1` true for the real facts (#68), false for #67 and #69 (17 cases) | `710b4ae2…` |
+| 12. N1 gate helper | `sh/n1-gate.py` with `FACTS_TOP` **#68 of 2026-11-26 00:55** at the fill, **#69 of 2026-11-27 00:55 since the run-day refresh** (`c354f923…`). Fixed-time tests: 12:30Z GO, the real 20:15Z records GO at 20:30Z and 21:25Z and STOP at 21:26Z, 21:20Z and 21:25Z GO, 21:30Z, 22:56Z and 23:10Z STOP, the next day with the old Phase 1 (synthetic or real) STOP, fresh GO, a stale stamp STOP, 01:00Z GO; `phase1` true for the real facts (#68), false for #67 and #69 (17 cases) | `710b4ae2…` (fill), `c354f923…` (refresh) |
 | 13. Recall helper | `sh/recalls.py` unchanged in code; on zq3-r22's real OBSERVEs it reports 2 recalls (`RELEASE/VIEW_RELEASE`), advances 7, self_admissions 6; an existing output exits 2 | `acaaf186…` |
 | 14. Other helpers | `p5-recheck.py` and `p5-estimate.py` pin Rocky PID 50982 / lstart 14:51:24 (zq3-r22's real Phase 5 inputs: the lstart check refuses 07:09:20 and passes with 14:51:24; the estimate reproduces zq3-r22's `p5-estimate.json` byte for byte, margin +0.15 GB); `p10-requests.py` the three r23 templates; `p9-ready.py` refuses zq3-r22's real READY run (r22 socket); guard budget unchanged and retested on zq3-r22's real journal (its Phase 9 and T1 checks reproduce, one second more with a whole-second `--now`; every latest start GO, one second later STOP; malformed journals `rc=2`, 22 cases); `p1-f3.sh` checks the r23 paths | [pins](pins.json) `fill_helpers` |
-| 15. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12 with every kept rule, the zq3-r22 run notes (R22-1, R22-2), "New for zq3-r23", **Phase 8 block 2a** (bounded log poll, R22-2), the run-day refresh (header, Phase 0, Phase 1), BEGIN/END markers in all code blocks, the fd_attr expectations, the km4/6m4 and `ENOSPC`/`VIEW_RETIRE (-110)` finding rules, the stock-kernel rule (Phase 3, 12), the iormesh rule and a run log template. `session.sh` `ed65bbf4…` (hpin over 19 files) | [pins](pins.json) `fill_helpers` |
+| 15. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12 with every kept rule, the zq3-r22 run notes (R22-1, R22-2), "New for zq3-r23", **Phase 8 block 2a** (bounded log poll, R22-2), the run-day refresh (header, Phase 0, Phase 1), BEGIN/END markers in all code blocks, the fd_attr expectations, the km4/6m4 and `ENOSPC`/`VIEW_RETIRE (-110)` finding rules, the stock-kernel rule (Phase 3, 12), the iormesh rule and a run log template. `session.sh` `ed65bbf4…` at the fill, `3e92efb9…` since the run-day refresh (hpin over 19 files) | [pins](pins.json) `fill_helpers` |
 
 Staging recipe (both tarballs, deterministic):
 `tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-26T00:00:00Z --format=gnu`.

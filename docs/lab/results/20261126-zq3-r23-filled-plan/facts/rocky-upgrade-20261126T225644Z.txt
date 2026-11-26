@@ -1,0 +1,48 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+== timedatectl
+               Local time: Fri 2026-11-27 00:56:48 EET
+           Universal time: Thu 2026-11-26 22:56:48 UTC
+                 RTC time: Thu 2026-11-26 22:56:48
+                Time zone: Europe/Sofia (EET, +0200)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+== timer
+Fri 2026-11-27 01:55:00 EET 58min left Fri 2026-11-27 00:55:00 EET 1min 48s ago unattended-upgrade-rocky.timer unattended-upgrade-rocky.service
+== stamp
+-rw-------. 1 root root 11 2026-11-27 00:55:07.867459102 +0200 /var/lib/unattended-upgrade/last-daily
+2026-11-27
+== last-upgrade-journal
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: (2/2): libgs-9.54.0-20.el9_9.1.x86_64.rpm        16 MB/s | 3.1 MB     00:00
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: --------------------------------------------------------------------------------
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Total                                           6.5 MB/s | 3.6 MB     00:00
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Running transaction check
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Transaction check succeeded.
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Running transaction test
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Transaction test succeeded.
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Running transaction
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Preparing        :                                                        1/1
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Upgrading        : libgs-9.54.0-20.el9_9.1.x86_64                         1/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Upgrading        : rsync-3.2.7-4.el9_9.x86_64                             2/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Cleanup          : libgs-9.54.0-19.el9_8.3.x86_64                         3/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Cleanup          : rsync-3.2.7-1.el9_8.x86_64                             4/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Running scriptlet: rsync-3.2.7-1.el9_8.x86_64                             4/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Verifying        : rsync-3.2.7-4.el9_9.x86_64                             1/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Verifying        : rsync-3.2.7-1.el9_8.x86_64                             2/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Verifying        : libgs-9.54.0-20.el9_9.1.x86_64                         3/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   Verifying        : libgs-9.54.0-19.el9_8.3.x86_64                         4/4
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Upgraded:
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]:   libgs-9.54.0-20.el9_9.1.x86_64           rsync-3.2.7-4.el9_9.x86_64
+Nov 27 00:55:06 rocky unattended-upgrade-rocky[5678]: Complete!
+Nov 27 00:55:07 rocky unattended-upgrade-rocky[5899]: [2026-11-27T00:55:07] reboot deferred: standalone rocky requires explicit maintenance approval
+Nov 27 00:55:07 rocky systemd[1]: unattended-upgrade-rocky.service: Deactivated successfully.
+Nov 27 00:55:07 rocky systemd[1]: Finished Unattended upgrade (Rocky daily mode).
+Nov 27 00:55:07 rocky systemd[1]: unattended-upgrade-rocky.service: Consumed 6.274s CPU time.
+== dnf-history
+ID     | Command line             | Date and time    | Action(s)      | Altered
+-------------------------------------------------------------------------------
+    69 | -y upgrade --disablerepo | 2026-11-27 00:55 | Upgrade        |    2   
+    68 | -y upgrade --disablerepo | 2026-11-26 00:55 | C, E, I, U     |   29   
+    67 | -y upgrade --disablerepo | 2026-11-25 00:55 | Upgrade        |   14   

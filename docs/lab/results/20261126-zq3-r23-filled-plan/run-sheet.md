@@ -128,6 +128,24 @@ zq3-r21 later-day refresh, commits `9b28254` and `18f268d`):
   agreement, for up to about 5 hours): if one still runs, the run waits
   and the orchestrator coordinates; the sheet never touches them.
 
+**Run-day refresh done (2026-11-26 22:56:44Z, stamp `20261126T225644Z`,
+run day 2026-11-27 EET): a record refresh.** Rocky's nightly run stamped
+`2026-11-27` at 00:55:07 EET and wrote **dnf transaction #69** (2026-11-27
+00:55, 2 packages: `rsync-3.2.7-4.el9_9` and `libgs-9.54.0-20.el9_9.1`;
+`needs-restarting -r` clean). Nothing pinned changed: Rocky PID `50982`,
+lstart, boot ID `99de7fb2…`, running kernel `741.27.1` = grub default =
+`saved_entry`, `next_entry` empty, python3.9, `authorized_keys`, the pod
+runtime (hashes and NEVRAs), UEFI vars `4f63d71b…`, the launch facts, f3
+boot `1794574308`, f3 `/usr/bin/ssh`, swap 0 used and both modules (ids 39
+and 40, no mounts) as at 20:15Z; every iormesh VM was Stopped and
+`/dev/vmm` held only `rocky`. So `sh/n1-gate.py` now expects **#69 of
+2026-11-27 00:55** (`c354f923…`), `session.sh`'s hpin names it, and
+`session.sh` is `3e92efb9…` in the Phase 0 list and [pins](pins.json).
+Phase 0 passes with the new pins. The refreshed facts are in
+[facts/](facts/) next to the 20:15Z ones, which stay the baseline for
+everything the refresh found unchanged. The run's own Phase 1 (below) is
+still taken on the run day and must show #69.
+
 **Rocky upgrades itself once a day** ([N1](#n1-rockys-nightly-upgrade)): a
 `dnf -y upgrade` runs at 00:55 Rocky-local = 22:55 UTC (Rocky's clock is
 Europe/Sofia, EET, UTC+2; zq3-r12's run-time revision R1). The run must
@@ -135,7 +153,7 @@ start after that day's run has stamped and finish before the next one
 (**22:55 UTC on the run day**); the gate before Phase 5 enforces it (latest
 Phase 5 start 21:25 UTC on the run day; the gate computes the dates from
 its own clock). Phase 1 rechecks the stamp, the dnf history (newest
-transaction **#68** at the fill), the pod-runtime NEVRAs and SHA256s and
+transaction #68 at the fill, **#69** at the run-day refresh), the pod-runtime NEVRAs and SHA256s and
 the kernel facts, and any drift means a refill (above).
 
 **The guard's 3600 s bound runs from the Phase 8 launch** (zq3-r13's
@@ -1395,14 +1413,23 @@ Rocky (10:24:51 EET): the timer's `OnBootSec` tick, which found today's
 stamp and only logged the deferred reboot. Expect the same after this
 run's Phase 12.
 
+**Run-day refresh (2026-11-26 22:56:44Z = 2026-11-27 00:56:44 EET,
+`rocky-upgrade-20261126T225644Z.txt`):** stamp `2026-11-27`, written
+00:55:07 EET; the newest dnf transaction is **#69** (2026-11-27 00:55, 2
+packages, Upgrade: `rsync-3.2.7-4.el9_9` and `libgs-9.54.0-20.el9_9.1`,
+`rocky-dnf69-20261126T225644Z.txt`); `needs-restarting -r` clean. No
+kernel, python3.9 or pod-runtime change (`rocky-grub-…`,
+`rocky-pod-runtime-…` byte-identical to 20:15Z), so `n1-gate.py`'s
+`FACTS_TOP` is now #69 (a record fix) and nothing else is refilled.
+
 **The run must start after that day's run has stamped and finish before
 the next one**, 00:55 EET on the next local day = **22:55 UTC on the run
 day** (2026-11-27 22:55 UTC for a run on 2026-11-27; the fill day's window
 had passed, so the run day first refreshes Phase 0 and Phase 1, header). If it does not, the
 upgrade can replace the kernel, python3.9, podman or crun:
 - Phase 1 records the stamp and the dnf history (`p1-upgrade.txt`,
-  `n1-gate.py phase1`). A newest transaction other than #68 means a dnf run
-  since the fill's facts: record `dnf history info <ID>`, and Phase 1's
+  `n1-gate.py phase1`). A newest transaction other than #69 means a dnf run
+  since the run-day refresh: record `dnf history info <ID>`, and Phase 1's
   pod-runtime NEVRA/SHA256 check (`p1-pod-runtime.txt`) and kernel facts
   (boot ID, running and default kernel, `next_entry`, python3.9) decide, as
   they do anyway;
@@ -1429,7 +1456,11 @@ GO at 20:30Z and 21:25Z and STOP at 21:26Z, 21:20Z GO, 21:25Z GO,
 (synthetic or real) STOP, the next day with a fresh Phase 1 and stamp GO, a
 stale stamp STOP and 01:00Z (2 h after the upgrade) GO; `phase1` reports
 `dnf_unchanged` true for the #68 facts and false for #67 and a synthetic
-#69 (17 cases). If the run slips to a later day, nothing here is retyped:
+#69 (17 cases). The run-day refresh moved `FACTS_TOP` to #69 (`c354f923…`):
+`phase1` reports `dnf_unchanged` true for the 22:56:44Z record (#69) and
+false for the 20:15Z one (#68); `gate` on the 22:56:44Z records gives STOP
+at 22:57Z (less than 35 min after 00:55, as expected that soon), GO at
+2026-11-27 12:00Z and STOP at 21:26Z. If the run slips to a later day, nothing here is retyped:
 the gate computes the last and next 00:55 local and 23:25 local from its
 own clock and the in-run Phase 1 files, and the in-run cutoff times below
 (22:15, 22:35 and 22:45 UTC) apply on that run day. On `STOP` nothing is
@@ -1449,7 +1480,7 @@ source /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/session.sh
 # ==== END Session-setup-workstation-bash block 1 ====
 ```
 
-`session.sh` (`ed65bbf4…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`3e92efb9…` since the run-day refresh, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r22's (a summary, not runnable as written; bash only):
 
 ```text
@@ -1593,7 +1624,7 @@ be6585e729dd32a2bbbe1d6d598dfb58ec2cb9442e075260d3cf8fede8d990e7  /home/paul/tmp
 dda355cfba97e8a0ca11d89d2ab01a61e6d3802be8ca5d537a4c9a16c487fb3f  /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/kernel/rocky-kernel-plan.json
 aa1ab40f3198a559758ca2b33e4c08a537b34d4087a8f023feef7061dcc126d1  /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/controller/batch-plan.TEMPLATE.json
 22b2c45b094550810b5ddf1521212810ae99c9a63f8b4ebe6d6642e4e746043a  /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/fdescfs-pins/pins.json
-ed65bbf4a03298def1dd7ba6f1901d0e1545d434b7b4d6f0149ab74be085ebc5  /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/session.sh
+3e92efb96e05bc29959b8a2021bda161001af407b5b127e6faa3ef8889d6d56b  /home/paul/tmp/claude/hfs-xz3-20261126-r23/zq3-r23-fill/session.sh
 EOF
 cd $D
 # ==== END Phase-0 block 1 ====
@@ -1645,7 +1676,7 @@ python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); f=d["files"]; pr
 f3 sh -s < $D/sh/p1-f3.sh > $E/p1-f3.txt
 rocky 'date -u; timedatectl; cat /proc/sys/kernel/random/boot_id; uname -r; grubby --default-kernel; grub2-editenv - list; getenforce; sha256sum /root/.ssh/authorized_keys /usr/bin/python3.9; df -B1 /boot /; ls /boot | grep -c hfs-xz3; ls -d /etc/homelabfs /root/hfs-zq3-zq3-r23-* /var/tmp/hfs-zq3-zq3-r23 2>&1; ls -l /.autorelabel 2>&1; grep -E "^SELINUX(TYPE)?=" /etc/selinux/config' > $E/p1-rocky.txt
 rocky 'echo "== stamp"; cat /var/lib/unattended-upgrade/last-daily; echo "== dnf-history"; dnf history list | head -n 3; echo "== timer"; systemctl list-timers --all --no-pager unattended-upgrade-rocky.timer | sed -n 2p' > $E/p1-upgrade.txt
-python3 -I -B $D/sh/n1-gate.py phase1 $E/p1-upgrade.txt | tee $E/p1-upgrade.json   # stamp = today (Europe/Sofia), dnf_unchanged: true (newest #68)
+python3 -I -B $D/sh/n1-gate.py phase1 $E/p1-upgrade.txt | tee $E/p1-upgrade.json   # stamp = today (Europe/Sofia), dnf_unchanged: true (newest #69, run-day refresh)
 python3 -I -B $D/sh/n1-gate.py gate $E/p1-rocky.txt $E/p1-upgrade.txt | tee $E/p1-nightly-gate.txt; echo rc=${PIPESTATUS[0]}   # early go/no-go (review round 1): STOP stops here, before Phase 1a
 rocky "sha256sum /usr/bin/podman /usr/bin/crun /usr/bin/conmon /usr/share/containers/seccomp.json; rpm -qf --qf '%{NEVRA}\n' -- /usr/bin/podman /usr/bin/crun" > $E/p1-pod-runtime.txt
 python3 -I -c 'import json,sys; t=json.load(open(sys.argv[1])); w=open(sys.argv[2]).read().split(); h=dict(zip(w[1:8:2], w[0:8:2])); now=[h[p] for p in ("/usr/bin/podman", "/usr/bin/crun", "/usr/bin/conmon", "/usr/share/containers/seccomp.json")] + w[8:]; pin=[t["runtime_sha256"][n] for n in ("podman", "crun", "conmon", "seccomp")] + [t["runtime_nevra"][n] for n in ("podman", "crun")]; print("pod-runtime-unchanged:", now == pin)' $D/pod/pod-request.TEMPLATE.json $E/p1-pod-runtime.txt
@@ -1700,8 +1731,8 @@ Continue only if all of these hold:
     Phase 5 nightly gate computes in `Europe/Sofia`;
   - **`p1-upgrade.json`**: `stamp` is today's local date (Europe/Sofia;
     `2026-11-27` for a run on that day: today's run has stamped) and
-    `dnf_unchanged: true` (newest transaction #68 of 2026-11-26 00:55, as in
-    the fill's facts). `dnf_unchanged: false` means a dnf run since the
+    `dnf_unchanged: true` (newest transaction #69 of 2026-11-27 00:55, as in
+    the run-day refresh). `dnf_unchanged: false` means a dnf run since the
     facts (likely on a later run day): record `rocky 'dnf history info
     <ID>'` in the run log; the pod-runtime and kernel checks below then
     decide. Any drift stops (refill; a kernel split needs Paul's
