@@ -1,4 +1,4 @@
-# zq3-r21 run sheet (filled 2026-11-25)
+# zq3-r21 run sheet (filled 2026-11-25, refilled 2026-11-26)
 
 [Summary](README.md) · [Pins](pins.json) · [Run plan](../../zq3-run-plan.md) ·
 [Phase 1 facts](facts/) · [zq3-r20 record](../20261122-zq3-r20/README.md) ·
@@ -6,7 +6,8 @@
 
 Ordered commands for run `zq3-r21`, the twenty-first attempt of zq3, with
 the values filled on 2026-11-25 from `main` `95f6d84` (the second r21
-candidate merge). The candidate is the **second r21 rebuild `f21450ec…`**
+candidate merge) and refilled on 2026-11-26 after Rocky's approved maintenance
+reboot into the stock `741.27.1` (below). The candidate is the **second r21 rebuild `f21450ec…`**
 (194 files; source and repository baseline `3081d31`, main `a670592` plus
 the Fedora 45 Go re-pin; built 2026-11-24 for this run). It follows
 zq3-r20's R20-1 (T1's access child, a non-owner, got `EACCES` because the
@@ -70,18 +71,29 @@ Everything was rebuilt, for the first time on the Fedora 45 toolchain
   (`openssh-clients-10.6p1-1.fc45`, `d4c70b09…`; it was `16cb2c6a…`): the
   batch template and the bootstrap plan pin the new hash, and the Phase 0
   recheck expects it;
-- **Rocky runs the stock `5.14.0-741.24.1.el9_9`** = grub default =
-  `saved_entry` (since zq3-r20's Phase 12 start, PID `40425`), so the
-  kernel plan's stock default stays
-  `/boot/vmlinuz-5.14.0-741.24.1.el9_9.x86_64`. **The custom kernel never
+- **Rocky runs the stock `5.14.0-741.27.1.el9_9`** = grub default =
+  `saved_entry` since the approved maintenance reboot of 2026-11-26
+  (PID `86754`): dnf #68 (2026-11-26 00:55 EET) had installed `741.27.1`
+  as the grub default while Rocky still ran `741.24.1` (the N1 kernel
+  split, as before zq3-r20). With Paul's approval Claude ran `vms.sh
+  stop-rocky` at 06:46:19Z (clean ACPI, stopped by 06:46:25Z) and
+  `start-rocky` at 06:46:28Z; pinned SSH answered at 06:46:47Z and systemd
+  was `running` at 06:47:07Z (Enforcing, no `/.autorelabel`, no failed
+  unit, `needs-restarting -r` clean, `next_entry` empty). So the kernel
+  plan's stock default is now `/boot/vmlinuz-5.14.0-741.27.1.el9_9.x86_64`,
+  and the inputs that depend on Rocky's incarnation or boot were refilled
+  (kernel plan, argv record with the new UEFI vars, a new bundle with new
+  sessions, staging tarballs, bootstrap and batch pins, `NG`,
+  `p5-recheck.py`, `p5-estimate.py`, `n1-gate.py`). **The custom kernel never
   becomes Rocky's default:** Phase 3 adds a non-default entry, Phase 5 sets
   it only as the one-shot `next_entry`, the Phase 8 boot consumes it, Phase
   11 verifies `next_entry` empty, Phase 12's restart boots the stock
-  `741.24.1` and checks it (`check --expect stock`), and U2 removes the
+  `741.27.1` and checks it (`check --expect stock`), and U2 removes the
   test kernel;
 - **dnf #67** (2026-11-25 00:55 EET, 14 packages, no kernel) upgraded
-  podman to `5.8.5-5.el9_9`: the pod template's podman pins are refilled
-  from the 09:38:05Z facts (crun, conmon and seccomp.json unchanged);
+  podman to `5.8.5-5.el9_9`: the pod template's podman pins came from the
+  2026-11-25 09:38:05Z facts and still hold (dnf #68 changed no pod
+  runtime file; crun, conmon and seccomp.json unchanged);
 - **iormesh VMs:** another session uses f3 for its own el9 VMs (iom1-3 and
   a k3s test VM), started and stopped one at a time. At the facts iom1-3
   were Stopped and no k3s VM was listed. **The run starts only while every
@@ -97,10 +109,10 @@ Everything was rebuilt, for the first time on the Fedora 45 toolchain
 `dnf -y upgrade` runs at 00:55 Rocky-local = 22:55 UTC (Rocky's clock is
 Europe/Sofia, EET, UTC+2; zq3-r12's run-time revision R1). The run must
 start after that day's run has stamped and finish before the next one
-(**22:55 UTC on the run day: 2026-11-25 22:55 UTC for a run on
-2026-11-25**); the gate before Phase 5 enforces it (latest Phase 5 start
+(**22:55 UTC on the run day: 2026-11-26 22:55 UTC for a run on
+2026-11-26**); the gate before Phase 5 enforces it (latest Phase 5 start
 21:25 UTC; the gate computes the dates from its own clock). Phase 1
-rechecks the stamp, the dnf history (newest transaction still **#67**), the
+rechecks the stamp, the dnf history (newest transaction still **#68**), the
 pod-runtime NEVRAs and SHA256s and the kernel facts, and any drift means a
 refill.
 
@@ -941,10 +953,10 @@ the root is a finding (R20-1 again, against sj4).
   - **Guest kernel, new bytes:** bzImage `74728cac…`, GNU build ID
     `bd4fa753…`, System.map `debb6bda…`, config `692ed3fa…` (only the two
     binutils version stamps changed); the five modules and `modules.*`
-    unchanged. The kernel plan was regenerated (`6b42f667`); against
+    unchanged. The kernel plan was regenerated (`ef6b688b`); against
     zq3-r20's it differs in `run_id`, `manifest_sha256`, the bzImage,
-    config and System.map entries and the build ID; the stock default stays
-    `741.24.1`. The first r21 package `1428d4db…` is refused as superseded
+    config and System.map entries and the build ID; the stock default is
+    `741.27.1` since the 2026-11-26 refill (it was `741.24.1` on 2026-11-25). The first r21 package `1428d4db…` is refused as superseded
     ("use the second r21 rebuild (f21450ec)").
   - **CGO daemon, new bytes:** `c7b89648…` (GNU build ID `9694935d…`,
     go1.27.4) in bootstrap `runtime.sha256`, the guard `--runtime-sha256`,
@@ -1013,7 +1025,8 @@ the root is a finding (R20-1 again, against sj4).
   omitted while 0, printed `null` then) next to `advances`; this daemon
   carries 2h4, so the optional `blocked` history may appear.
 - **Pod template refilled:** dnf #67 upgraded podman, so `runtime_sha256`
-  and `runtime_nevra` come from the 09:38:05Z `== pod-runtime` facts
+  and `runtime_nevra` come from the 2026-11-25 09:38:05Z `== pod-runtime` facts
+  (byte-identical in the 2026-11-26 06:47:39Z facts)
   (podman `8d94a8fb…` `podman-6:5.8.5-5.el9_9.x86_64`; crun, conmon,
   seccomp.json unchanged); `fixture_sha256` is pl4's `7c1e545f…`. The
   committed `pod_fixture.py` accepts it and refuses the malformed variants,
@@ -1030,7 +1043,7 @@ the root is a finding (R20-1 again, against sj4).
   "stop iomN on its own line" step is gone). Phase 12 and every abort path
   only record their state.
 - **Run ID `zq3-r21`** (same length as zq3-r20), native guard root
-  `/var/tmp/hfs-20261125-zq3r21-fdq` (fill date 2026-11-25), private fill
+  `/var/tmp/hfs-20261126-zq3r21-fdq` (refill date 2026-11-26), private fill
   directory `/home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill` (under
   the candidate's run root; the earlier `/home/paul/tmp/claude/hfs-zq3-r21-fill`
   belongs to the superseded first r21 rebuild and is not used).
@@ -1081,28 +1094,31 @@ the root is a finding (R20-1 again, against sj4).
   `EAGAIN`, `EKEYREJECTED` or `EOPNOTSUPP` from a probe syscall), the 984
   timing capture, the per-case admission-step timings and the oc4/pc4 errno
   records (`-112`/`-116`, `exporter ERROR <n>`).
-- **Facts (2026-11-25 09:38:05Z, read-only, the baseline):**
+- **Facts (2026-11-26 06:47:39Z, read-only, the baseline; after the
+  maintenance reboot):**
   - f3 boot unchanged (`1794574308`, Paul's deliberate 2026-11-13 reboot);
-    `vm list`: `rocky` Running (40425), `freebsd`, `hfs-test0..2` and
-    **iom1, iom2, iom3 Stopped**; no iormesh k3s VM listed; `/dev/vmm`
-    holds only `rocky`;
-  - Rocky's bhyve PID `40425`, UTC lstart `Sun Nov 22 17:19:43 2026`
-    (zq3-r20's Phase 12 start), boot ID
-    `9a3774b8-fcb1-471c-9b00-8a1bfb089f57` (copied from
-    `rocky-phase1-20261125T093805Z.txt`), up 2 days 16:18, running the
-    stock `5.14.0-741.24.1.el9_9.x86_64` = grub default = `saved_entry`,
+    `vm list`: `rocky` Running (86754), `freebsd`, `hfs-test0..2` and
+    **iom1, iom2, iom3 Stopped** (iom1 had run at the 06:31Z read and was
+    stopped by the iormesh session before the reboot); no iormesh k3s VM
+    listed; `/dev/vmm` holds only `rocky`;
+  - Rocky's bhyve PID `86754`, UTC lstart `Thu Nov 26 06:46:29 2026`
+    (the maintenance reboot), boot ID
+    `69aefe1f-db9f-48b3-aff4-86cc549b0cc8` (copied from
+    `rocky-phase1-20261126T064739Z.txt`), running the stock
+    `5.14.0-741.27.1.el9_9.x86_64` = grub default = `saved_entry`,
     `next_entry` empty, Enforcing, no `/.autorelabel`, `authorized_keys`
     `e08542dc…` (one line), python3.9 `729ac37f…`; no `hfs-xz3` file in
     `/boot`; `/etc/homelabfs` absent;
   - Rocky's clock and upgrade: `Europe/Sofia (EET, +0200)`, synchronized;
-    stamp `2026-11-25` (00:55:31 EET); the newest dnf transaction is
-    **#67** (2026-11-25 00:55, 14 packages: openssh, flatpak, golang,
-    libgsf, podman and podman-docker `5.8.5-5.el9_9`, xdg-desktop-portal;
-    no kernel; `needs-restarting -r`: no reboot needed). The next run is
-    2026-11-26 00:55 EET = 2026-11-25 22:55 UTC, so **the latest Phase 5
-    start on 2026-11-25 is 21:25 UTC** (the gate recomputes it on any
+    stamp `2026-11-26` (00:59:03 EET); the newest dnf transaction is
+    **#68** (2026-11-26 00:55, 29 packages: the stock kernel
+    `741.27.1` as the grub default, kernel-tools/headers, ruby,
+    webkit2gtk3-jsc; the 687.66.1 kernel removed; no pod runtime change;
+    `needs-restarting -r` clean after the reboot). The next run is
+    2026-11-27 00:55 EET = 2026-11-26 22:55 UTC, so **the latest Phase 5
+    start on 2026-11-26 is 21:25 UTC** (the gate recomputes it on any
     later day);
-  - UEFI vars `9f4fca82…` (unchanged since zq3-r20's Phase 12 start),
+  - UEFI vars `883a9566…` (new: the maintenance reboot changed them),
     `rocky.conf` `c101adf1…`, vm-run `43753bc8…`, firmware `6b48e967…`, f3
     `/usr/bin/ssh` `6a9e5573…` unchanged;
   - `10.20.0.133` on `vm-public` (members `tap0`, `re0`);
@@ -1110,13 +1126,14 @@ the root is a finding (R20-1 again, against sj4).
     zq3-r20's window, no fuse/fdesc mount): Phase 1a runs;
   - the r21 staging, window and guard-root paths are absent; zq3-r20's
     f3 directories exist (evidence; leave them);
-  - pod runtime: podman `8d94a8fb…` `podman-6:5.8.5-5.el9_9.x86_64`
-    (new, dnf #67), crun `659867c7…` `crun-1.29.1-1.el9.x86_64`, conmon
+  - pod runtime (unchanged since dnf #67): podman `8d94a8fb…`
+    `podman-6:5.8.5-5.el9_9.x86_64`, crun `659867c7…` `crun-1.29.1-1.el9.x86_64`, conmon
     `1ac2a8db…`, seccomp `7dd44119…`;
   - f3 memory (a record only, not a headroom judgement: the iormesh
-    session runs its VMs at times): physmem 16,879,837,184, free 5.08 GB
-    (1,240,779 pages), inactive 2.67 GB, active 0.51 GB, wired 8.19 GB,
-    ARC 7.22 GB (`c_min` 0.53 GB), **swap 0 used**; Phase 5's estimate and
+    session runs its VMs at times): physmem 16,879,837,184, free 6.13 GB
+    (1,496,455 pages), inactive 0.34 GB, active 1.41 GB, wired 8.58 GB,
+    ARC 7.56 GB (`c_min` 0.53 GB), one minute after Rocky's start, **swap
+    0 used**; Phase 5's estimate and
     the Phase 6 bar decide at run time;
   - zroot ONLINE, 344G free; `/var/tmp/homelabfs-9p-poc/share` present.
 
@@ -1213,20 +1230,23 @@ rocky requires explicit maintenance approval"). The test guest that boots
 Rocky's disk also starts the timer (`OnBootSec=10min`), but the stamp
 already holds today's local date, so it only logs the deferred reboot.
 
-The fill's facts (2026-11-25 09:38:05Z = 11:38:05 EET,
-`rocky-upgrade-20261125T093805Z.txt`): stamp `2026-11-25`, written
-00:55:31 EET; the newest dnf transaction is **#67** (2026-11-25 00:55,
-14 packages, Upgrade): openssh 9.9p1-17, flatpak, golang 1.27.4, libgsf,
-**podman and podman-docker `5.8.5-5.el9_9`** (from `5.8.5-3`) and
-xdg-desktop-portal, **no kernel** (`rocky-dnf67-20261125T093805Z.txt`;
-`needs-restarting -r`: no reboot needed). The hourly ticks log "reboot
-deferred: standalone rocky requires explicit maintenance approval", as
-every tick does. Rocky runs `5.14.0-741.24.1.el9_9` = grub default =
-`saved_entry` = the kernel plan's stock default (since zq3-r20's Phase 12
-start), python3.9 is `729ac37f…`, crun, conmon and seccomp.json hash as in
-zq3-r12 to zq3-r20, and **podman changed** (`8d94a8fb…`,
-`podman-6:5.8.5-5.el9_9.x86_64`): the pod template's podman pins are
-refilled from these facts. The NEVRAs are pins too (e94). The journal also
+The fill's facts (2026-11-26 06:47:39Z = 08:47:39 EET,
+`rocky-upgrade-20261126T064739Z.txt`): stamp `2026-11-26`, written
+00:59:03 EET; the newest dnf transaction is **#68** (2026-11-26 00:55,
+29 packages, C/E/I/U): **the stock kernel `5.14.0-741.27.1.el9_9`**
+(kernel, -core, -modules, -modules-core, -devel installed and made the
+grub default; kernel-tools/-libs/-headers upgraded; the 687.66.1 kernel
+removed), ruby 3.0.7-171 with its gems and webkit2gtk3-jsc
+(`rocky-dnf68-20261126T064739Z.txt`). It left the N1 kernel split (running
+`741.24.1`, default `741.27.1`), which the approved maintenance reboot at
+06:46Z resolved: Rocky runs `5.14.0-741.27.1.el9_9` = grub default =
+`saved_entry` = the kernel plan's stock default, and `needs-restarting -r`
+is clean. The hourly ticks log "reboot deferred: standalone rocky requires
+explicit maintenance approval" whenever a reboot is pending, as every tick
+does. python3.9 is `729ac37f…`; podman (`8d94a8fb…`,
+`podman-6:5.8.5-5.el9_9.x86_64`, from dnf #67 of 2026-11-25), crun, conmon
+and seccomp.json hash as at the first r21 fill, so the pod template's pins
+still hold. The NEVRAs are pins too (e94). The journal also
 shows one run at 10:35 EET, 11 minutes after zq3-r13's Phase 12 started
 Rocky (10:24:51 EET): the timer's `OnBootSec` tick, which found today's
 stamp and only logged the deferred reboot. Expect the same after this
@@ -1234,10 +1254,10 @@ run's Phase 12.
 
 **The run must start after that day's run has stamped and finish before
 the next one**, 00:55 EET on the next local day = **22:55 UTC on the run
-day** (2026-11-25 22:55 UTC for a run on 2026-11-25). If it does not, the
+day** (2026-11-26 22:55 UTC for a run on 2026-11-26). If it does not, the
 upgrade can replace the kernel, python3.9, podman or crun:
 - Phase 1 records the stamp and the dnf history (`p1-upgrade.txt`,
-  `n1-gate.py phase1`). A newest transaction other than #67 means a dnf run
+  `n1-gate.py phase1`). A newest transaction other than #68 means a dnf run
   since the fill's facts: record `dnf history info <ID>`, and Phase 1's
   pod-runtime NEVRA/SHA256 check (`p1-pod-runtime.txt`) and kernel facts
   (boot ID, running and default kernel, `next_entry`, python3.9) decide, as
@@ -1253,17 +1273,17 @@ three rules are unchanged and zq3-r13 added the stamp rule. It stops the run if:
   run);
 - it is later than 23:25 Rocky-local = **21:25 UTC** (00:55 minus the 90
   minutes Phases 5-12 may take), so the **latest Phase 5 start is 21:25 UTC
-  on the run day** (2026-11-25 for a run that day);
+  on the run day** (2026-11-26 for a run that day);
 - the Phase 1 stamp is not the local date of the last 00:55 (that day's
   run had not stamped at Phase 1, so it may still be pending; added in
   zq3-r13).
 
 The fill tested the exact helper at fixed times (`--now`, which the run
-never passes): 10:30Z GO (also with the real 09:38Z upgrade record), 21:20Z
+never passes): 07:30Z GO (also with the real 06:47Z upgrade record), 21:20Z
 GO, 21:25Z GO, 21:30Z STOP, 22:56Z STOP, 23:10Z STOP, the next day with the
 old Phase 1 STOP, the next day with a fresh Phase 1 and stamp GO, a stale
 stamp STOP and 01:00Z (2 h after the upgrade) GO; `phase1` reports
-`dnf_unchanged` true for the #67 facts and false for #66 and a synthetic #68. If the run slips to a later day, nothing here is retyped:
+`dnf_unchanged` true for the #68 facts and false for #67 and a synthetic #69. If the run slips to a later day, nothing here is retyped:
 the gate computes the last and next 00:55 local and 23:25 local from its
 own clock and the in-run Phase 1 files, and the in-run cutoff times below
 (22:15, 22:35 and 22:45 UTC) apply on that run day. On `STOP` nothing is
@@ -1283,7 +1303,7 @@ source /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/session.sh
 # ==== END Session-setup-workstation-bash block 1 ====
 ```
 
-`session.sh` (`dff08094…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`d26cd441…`, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r20's (a summary, not runnable as written; bash only):
 
 ```text
@@ -1303,8 +1323,8 @@ rockyt(){ …rocky with a local `timeout 270` around the real ssh, </dev/null; e
 hpin()  { …sha256sum -c of bin/sign_watch.py (8aeb82fc…), the signer bin/hfs-retained9p-operator (56147372…, rebuilt at 95f6d84 with go1.27.4) and the seventeen sh/* helpers… }
 rockywait() { …Phase 12/U3: `rocky true` every 10 s until it answers, at most TRIES (default 36) tries; run it in bash that sourced session.sh (the bash-only wrapper is fine), never in a bare bash -c that did not source it… }
 K='/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r21-kernel-stage/rocky_kernel.py'
-KP='--plan /root/hfs-zq3-zq3-r21-kernel-stage/rocky-kernel-plan.json --plan-sha256 6b42f66773b9bc870cf11ac90af0264f6110e72fa97bd72ee7cd75ad7e7caadd --state /root/hfs-zq3-zq3-r21-kernel-state'
-NG="doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261125-zq3r21-fdq/native-test-guard.py --root /var/tmp/hfs-20261125-zq3r21-fdq --local-reserved-bytes 4294967296 --profile host --rocky-pid 40425 --rocky-birth 'Sun Nov 22 17:19:43 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 --max-seconds 60"
+KP='--plan /root/hfs-zq3-zq3-r21-kernel-stage/rocky-kernel-plan.json --plan-sha256 ef6b688bb78489b5bbe36e8efdbb8c4ac493a743ab479321517a15c77b1ae045 --state /root/hfs-zq3-zq3-r21-kernel-state'
+NG="doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261126-zq3r21-fdq/native-test-guard.py --root /var/tmp/hfs-20261126-zq3r21-fdq --local-reserved-bytes 4294967296 --profile host --rocky-pid 86754 --rocky-birth 'Thu Nov 26 06:46:29 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 --max-seconds 60"
 gbudget() { …Phases 9-10: sh/guard-budget.py over $D/bootstrap-run/journal.jsonl; `gbudget` prints the remaining guard seconds, `gbudget STEP` one JSON line with "decision" GO|STOP (exit 1 on STOP)… }
 sha()   { …SHA256 of one local file… }
 jf()    { …one field of a recorded JSON file: jf FILE KEY…… }
@@ -1354,7 +1374,7 @@ bash -c 'source /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/session.
 
 ## D1: f3 module state (decided: D1-a, Phase 1a)
 
-The 09:38Z facts show `fdescfs.ko` (id 37) and `fusefs.ko` (id 38) loaded on
+The 06:47Z facts show `fdescfs.ko` (id 37) and `fusefs.ko` (id 38) loaded on
 f3, left by zq3-r20 (its Phase 4 loaded them, its window restore kept them,
 and f3 has not rebooted since Paul's deliberate 2026-11-13 reboot), with no
 fuse or fdesc mount and `/dev/fd` on devfs. The window plan filler
@@ -1377,15 +1397,16 @@ step 4, and both stay loaded after this run.
 
 ## Phase 0: local preparation (B, done; rerun about 5 min)
 
-Done on 2026-11-25 by the fill:
+Done on 2026-11-25 by the fill and redone on 2026-11-26 after the maintenance
+reboot (bundle, argv record, kernel plan, templates, staging, helpers):
 - `hfs-runtime-prep` and the signer rebuilt at `95f6d84` with go1.27.4
   (two identical builds each, see the [README](README.md));
 - the bundle (the committed spec: `ControlTickets` 24, now pinning the
   exporter `8cadae40…`; new sessions);
-- the argv record (from the 09:38Z launch facts, UEFI vars `9f4fca82…`,
+- the argv record (from the 06:47Z launch facts, UEFI vars `883a9566…`,
   exporter `8cadae40…`);
 - the kernel plan (second r21 candidate `f21450ec…`: kernel `bd4fa753…`;
-  stock default `741.24.1.el9_9`);
+  stock default `741.27.1.el9_9`);
 - the templates (T5 still deferred, r9 reason; be4 request `seconds` 240,
   plan `seconds` 255, lock-probe budgets 150/240; **`fd_attr` on in the
   batch template and the bootstrap plan**; the workstation ssh
@@ -1403,20 +1424,20 @@ Re-verify immediately before Phase 1:
 ```bash
 # ==== BEGIN Phase-0 block 1 (run each line on its own) ====
 cd $S/tools/lab/directlaunch && python3 -I -B argv.py verify --record $D/argv/bhyve-argv.json \
-  --record-sha256 ceeb792f9e2b5e21e63b995debd42d8a3080a4356ace9a0a6fe2026b5dd48692 --runtime-config $D/bundle/runtime-config.json
+  --record-sha256 e4337b2dfe6ab2ca40cd15973674499c314d54c52152a4a3682a2df8b0a3ce3f --runtime-config $D/bundle/runtime-config.json
 $D/bin/hfs-runtime-prep check-argv --bundle $D/bundle --record $D/argv/bhyve-argv.json \
-  --record-sha256 ceeb792f9e2b5e21e63b995debd42d8a3080a4356ace9a0a6fe2026b5dd48692
+  --record-sha256 e4337b2dfe6ab2ca40cd15973674499c314d54c52152a4a3682a2df8b0a3ce3f
 python3 -I -B $S/tools/lab/retained9p/bootstrap.py check --plan $D/bootstrap/bootstrap-plan.json \
-  --plan-sha256 43181e441de5aa196e70cf7379c3db9d99e392b186f85e3ef6dee4d4d4b4f6b8
+  --plan-sha256 ef005319d17505bc9b12aef5c05c9ddd2a8071084da564e90e8d7603e3697b94
 $S/tools/lab/check-retained9p.sh check --plan $D/controller/batch-plan.SYNTHETIC-shapecheck.json   # cases_planned: the four, deferred: mapped-pressure
 sha256sum /usr/bin/ssh                                   # d4c70b09… (Fedora 45; the batch template and the bootstrap plan pin it)
 hpin && okpin && sha256sum -c <<'EOF'
-e8ab079703dc0f1b1897bf5cbbcc5085555ad5ce62d5497343d5ced60eb8ebc3  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/stage/f3-stage.tar
-d69781f64a9295b6c585532887ff54fd4bddc9cd62dad7b58c3a506ce416a80d  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/stage/rocky-stage.tar
-6b42f66773b9bc870cf11ac90af0264f6110e72fa97bd72ee7cd75ad7e7caadd  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/kernel/rocky-kernel-plan.json
-99ca489dbffbabfaaa97ef7d66b9418c294e8cfcb933b83beb8284da57c67026  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/controller/batch-plan.TEMPLATE.json
+7cd0b60c52d694d24e28caa6ad127d50b2a94e6567edcae239252d4d45eba3ce  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/stage/f3-stage.tar
+5c52192085b5b7a0d3581d5b7915c6827c9812826e8dd02ef5bf51b40489dec2  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/stage/rocky-stage.tar
+ef6b688bb78489b5bbe36e8efdbb8c4ac493a743ab479321517a15c77b1ae045  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/kernel/rocky-kernel-plan.json
+098ca425045a8512f4259fecdf8f97f75b5beaf16c68a584ede25c089c96f97f  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/controller/batch-plan.TEMPLATE.json
 1ae0860ea371ffd987a80524d7e0c981cddf1d111ebfacf208689ece5c29ad9c  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/fdescfs-pins/pins.json
-dff080944eddb50e99cfdbf23ae0bc5bdab6cfd8f176b8cb4eef229962cdbdd8  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/session.sh
+d26cd441bb767b8f39c09b51a60d006120f6794011679b7488326aee9e8624c5  /home/paul/tmp/claude/hfs-xz3-20261125-r21/zq3-r21-fill/session.sh
 EOF
 cd $D
 # ==== END Phase-0 block 1 ====
@@ -1447,7 +1468,7 @@ Claude through the watcher in Phase 8.
 
 ## Phase 0b: no swap clearing this run
 
-f3 swap is 0 used at the 2026-11-25 09:38Z facts, so zq3-r19's Phase 0b
+f3 swap is 0 used at the 2026-11-26 06:47Z facts, so zq3-r19's Phase 0b
 (`swapoff -a` / `swapon -a`) does not run. Phase 1 checks the `swapinfo`
 line: **0 used** continues; any swap in use stops before Phase 1a, with
 nothing changed, and Paul decides (Phase 6 requires swap unused, because
@@ -1455,7 +1476,7 @@ nothing changed, and Paul decides (Phase 6 requires swap unused, because
 
 ## Phase 1: re-verify the Phase 1 facts (B, about 5 min)
 
-The 2026-11-25 09:38Z facts ([facts/](facts/)) are the baseline. Immediately
+The 2026-11-26 06:47Z facts ([facts/](facts/)) are the baseline. Immediately
 before Phase 1a:
 
 ```bash
@@ -1466,7 +1487,7 @@ python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); f=d["files"]; pr
 f3 sh -s < $D/sh/p1-f3.sh > $E/p1-f3.txt
 rocky 'date -u; timedatectl; cat /proc/sys/kernel/random/boot_id; uname -r; grubby --default-kernel; grub2-editenv - list; getenforce; sha256sum /root/.ssh/authorized_keys /usr/bin/python3.9; df -B1 /boot /; ls /boot | grep -c hfs-xz3; ls -d /etc/homelabfs /root/hfs-zq3-zq3-r21-* /var/tmp/hfs-zq3-zq3-r21 2>&1; ls -l /.autorelabel 2>&1; grep -E "^SELINUX(TYPE)?=" /etc/selinux/config' > $E/p1-rocky.txt
 rocky 'echo "== stamp"; cat /var/lib/unattended-upgrade/last-daily; echo "== dnf-history"; dnf history list | head -n 3; echo "== timer"; systemctl list-timers --all --no-pager unattended-upgrade-rocky.timer | sed -n 2p' > $E/p1-upgrade.txt
-python3 -I -B $D/sh/n1-gate.py phase1 $E/p1-upgrade.txt | tee $E/p1-upgrade.json   # stamp = today (Europe/Sofia), dnf_unchanged: true (newest #67)
+python3 -I -B $D/sh/n1-gate.py phase1 $E/p1-upgrade.txt | tee $E/p1-upgrade.json   # stamp = today (Europe/Sofia), dnf_unchanged: true (newest #68)
 python3 -I -B $D/sh/n1-gate.py gate $E/p1-rocky.txt $E/p1-upgrade.txt | tee $E/p1-nightly-gate.txt; echo rc=${PIPESTATUS[0]}   # early go/no-go (review round 1): STOP stops here, before Phase 1a
 rocky "sha256sum /usr/bin/podman /usr/bin/crun /usr/bin/conmon /usr/share/containers/seccomp.json; rpm -qf --qf '%{NEVRA}\n' -- /usr/bin/podman /usr/bin/crun" > $E/p1-pod-runtime.txt
 python3 -I -c 'import json,sys; t=json.load(open(sys.argv[1])); w=open(sys.argv[2]).read().split(); h=dict(zip(w[1:8:2], w[0:8:2])); now=[h[p] for p in ("/usr/bin/podman", "/usr/bin/crun", "/usr/bin/conmon", "/usr/share/containers/seccomp.json")] + w[8:]; pin=[t["runtime_sha256"][n] for n in ("podman", "crun", "conmon", "seccomp")] + [t["runtime_nevra"][n] for n in ("podman", "crun")]; print("pod-runtime-unchanged:", now == pin)' $D/pod/pod-request.TEMPLATE.json $E/p1-pod-runtime.txt
@@ -1479,18 +1500,18 @@ Continue only if all of these hold:
   - kern.boottime is `{ sec = 1794574308, usec = 469376 } Fri Nov 13
     14:51:48 2026` (f3 prints local time, UTC+2: 12:51:48 UTC; unchanged
     since zq3-r8);
-  - Rocky's bhyve PID is `40425` with UTC lstart `Sun Nov 22 17:19:43 2026`;
+  - Rocky's bhyve PID is `86754` with UTC lstart `Thu Nov 26 06:46:29 2026`;
   - freebsd/hfs-test0..2 **and every iormesh VM** (iom1, iom2, iom3 and
     the iormesh k3s test VM if `vm list` shows one) are Stopped and
     `/dev/vmm` = `rocky`. **If any iormesh VM runs, stop the run here**
     (nothing has changed yet) and coordinate with the iormesh session
     through Paul or the orchestrator: the window is scheduled while they are
     stopped. This sheet never stops or starts one;
-  - swap: the `swapinfo` line shows **0 used** (09:38Z facts: 0 used; no
+  - swap: the `swapinfo` line shows **0 used** (06:47Z facts: 0 used; no
     Phase 0b this run). Swap in use here: stop before Phase 1a, with
     nothing changed, and ask Paul (Phase 6 requires swap unused, because
     `runtime-guard.py` admits no swap use);
-  - **`fdescfs.ko` and `fusefs.ko` are both in `kldstat`** (09:38Z: ids 37
+  - **`fdescfs.ko` and `fusefs.ko` are both in `kldstat`** (06:47Z: ids 37
     and 38, left by zq3-r20), `no-fuse-fdesc-mounts`, and `/dev/fd` is on
     devfs. Phase 1a unloads them;
   - `/var/tmp/hfs-validation-xz3` and `/var/tmp/hfs-fdescfs-windows` are both
@@ -1501,14 +1522,14 @@ Continue only if all of these hold:
     `from="10.20.0.133"` would no longer match f3's source address;
   - the PoC share is present and f3 `/usr/bin/ssh` is `6a9e5573…`.
 - **Launch facts:** `rocky.conf` `c101adf1…`, vm-run `43753bc8…`, firmware
-  `6b48e967…` (link `../edk2-bhyve/BHYVE_UEFI.fd`), **vars `9f4fca82…`**,
+  `6b48e967…` (link `../edk2-bhyve/BHYVE_UEFI.fd`), **vars `883a9566…`**,
   bridge members `re0 tap0` (no `tap100`).
 - **Rocky:**
-  - boot ID `9a3774b8-fcb1-471c-9b00-8a1bfb089f57`;
+  - boot ID `69aefe1f-db9f-48b3-aff4-86cc549b0cc8`;
   - **the running kernel equals the grub default**, and both equal the
-    kernel plan's stock default `5.14.0-741.24.1.el9_9.x86_64`
+    kernel plan's stock default `5.14.0-741.27.1.el9_9.x86_64`
     (`grubby --default-kernel` prints
-    `/boot/vmlinuz-5.14.0-741.24.1.el9_9.x86_64`, `saved_entry` names the
+    `/boot/vmlinuz-5.14.0-741.27.1.el9_9.x86_64`, `saved_entry` names the
     same kernel), `next_entry=` empty (N1; zq3-r11's S1 showed how a
     nightly upgrade without a reboot splits them). A mismatch, or a boot ID
     other than the one above (for example after the nightly 00:55 `dnf -y
@@ -1518,8 +1539,8 @@ Continue only if all of these hold:
     at 00:55 EET = 22:55 UTC (N1, R1). Another time zone stops here: the
     Phase 5 nightly gate computes in `Europe/Sofia`;
   - **`p1-upgrade.json`**: `stamp` is today's local date (Europe/Sofia;
-    `2026-11-25` for a run on that day: today's run has stamped) and
-    `dnf_unchanged: true` (newest transaction #67 of 2026-11-25 00:55, as in
+    `2026-11-26` for a run on that day: today's run has stamped) and
+    `dnf_unchanged: true` (newest transaction #68 of 2026-11-26 00:55, as in
     the fill's facts). `dnf_unchanged: false` means a dnf run since the
     facts: record `rocky 'dnf history info <ID>'` in the run log; the
     pod-runtime and kernel checks below then decide, and any drift stops
@@ -1544,7 +1565,7 @@ Continue only if all of these hold:
 
 `boot_indeterminate=7` is expected. It stayed at 7 through every Rocky start
 since zq3-r7, so it is not a start counter. The interface order in the
-launch facts may differ (09:38Z: `re0 lo0 vm-public pflog0 vm-hfslab tap0
+launch facts may differ (06:47Z: `re0 lo0 vm-public pflog0 vm-hfslab tap0
 wg0`); only the set and the bridge members count. The f3 run directories now
 include zq3-r20's (`/var/tmp/hfs-20261122-zq3r20-fdq` and the zq3-r20
 window and staging directories), the xd4 native build root
@@ -1554,7 +1575,7 @@ window and staging directories), the xd4 native build root
 **`/.autorelabel` present: stop** before Phase 1a, with nothing changed. The
 test kernel's boot under the exporter would find it, relabel and reboot the
 guest in the middle of Phase 8. Report it: it means a boot without SELinux
-happened since 09:38Z. **A fusefs or fdescfs mount, or a module state other
+happened since 06:47Z. **A fusefs or fdescfs mount, or a module state other
 than both loaded: stop** (a plan revision decides). Any other difference also
 stops and revises the plan. A changed vars hash means a new argv record.
 Another f3 boot or Rocky restart means a new boot time, PID and lstart for
@@ -1595,11 +1616,11 @@ owner.
 ```bash
 # ==== BEGIN Phase-2 block 1 (run each line on its own) ====
 f3 "doas -n stat -f '%Sp %Su %Sg %N' /var/tmp/hfs-validation-xz3 /var/tmp/hfs-fdescfs-windows"   # both drwx------ root wheel
-f3 "doas -n test ! -e $R && doas -n test ! -e /var/tmp/hfs-20261125-zq3r21-fdq && echo absent"   # must print absent
+f3 "doas -n test ! -e $R && doas -n test ! -e /var/tmp/hfs-20261126-zq3r21-fdq && echo absent"   # must print absent
 f3 doas -n tar -x -p --same-owner -f - -C /var/tmp < $D/stage/f3-stage.tar
 f3 doas -n sha256 -r $(tr '\n' ' ' < $D/stage/f3-paths.txt) | diff - $D/stage/f3-expected.sha256r
 f3 doas -n stat -f "'%Sp %Su %Sg %l %N'" $(tr '\n' ' ' < $D/stage/f3-paths.txt) | diff - $D/stage/f3-expected.stat
-f3 doas -n stat -f "'%Sp %Su %Sg %N'" /var/tmp/hfs-validation-xz3 $R $R/bin $R/records $R/runtime $R/runtime/handoff $R/observer /var/tmp/hfs-20261125-zq3r21-fdq > $E/p2-dirs.txt
+f3 doas -n stat -f "'%Sp %Su %Sg %N'" /var/tmp/hfs-validation-xz3 $R $R/bin $R/records $R/runtime $R/runtime/handoff $R/observer /var/tmp/hfs-20261126-zq3r21-fdq > $E/p2-dirs.txt
 # ==== END Phase-2 block 1 ====
 ```
 
@@ -1616,7 +1637,7 @@ forwarder on top of 9h4; never run before), `controlledruntime.test`
 8's `host-preflight` re-hashes this staged copy against the bootstrap
 plan's `prep.config_sha256`, ol4) and the Rocky pin file; the native guard
 (`576d802a…`, unchanged) and `runner_process.py` go to
-`/var/tmp/hfs-20261125-zq3r21-fdq`. `bhyve-slirp-helper` is not staged (the
+`/var/tmp/hfs-20261126-zq3r21-fdq`. `bhyve-slirp-helper` is not staged (the
 argv has no slirp device). Failure: preserve, stop.
 
 ## Phase 3: Rocky staging, kernel install, observer stage, pod rootfs (A3, A8; about 12 min)
@@ -1644,7 +1665,7 @@ config `692ed3fa…`, new bytes; SELinux still in `CONFIG_LSM`; release
 `6.1.190-hfs-xz3` and the five modules as in zq3-r13 to zq3-r20, whose BLS entry was
 `b26c0ac534534d7fb81b3e0698558bc3-6.1.190-hfs-xz3`; the same release gives
 the same entry ID), default still the
-plan's stock kernel `5.14.0-741.24.1.el9_9.x86_64` (N1), `saved_entry`
+plan's stock kernel `5.14.0-741.27.1.el9_9.x86_64` (N1), `saved_entry`
 unchanged, `next_entry` empty (`install` never uses `--make-default`: the
 custom kernel never becomes Rocky's default);
 observer stage writes `$G/observer.py` and `$G/installed-probe.py` (`0400`)
@@ -1672,7 +1693,7 @@ moved those pins into the request: the pod template
 (`homelabfs-retained9p-pod/2`)
 pins `runtime_nevra` `podman-6:5.8.5-5.el9_9.x86_64` (dnf #67) and
 `crun-1.29.1-1.el9.x86_64` and the four `runtime_sha256` values, all from
-the 09:38:05Z facts, and `check_runtime` requires `rpm -qf` and the hashes
+the 06:47:39Z facts, and `check_runtime` requires `rpm -qf` and the hashes
 to match them exactly. So both pod lines above run (A8), and `PM` is the
 reviewed manifest digest, persisted in `vars.env`. `PM=skip` only if Paul
 declines A8 (T7 then unrun). Failure: stop before Phase 5 and run U2
@@ -1698,8 +1719,8 @@ f3 sh -s < $D/sh/p4-libs.sh > $E/p4-python-libs.sha256
 cat $E/p4-python-libs.sha256 >> $E/p4-host.sha256
 f3 "stat -f '%Sp %Su %Sg %N' /usr/local/bin/python3.12 /usr/local/bin /usr/local /usr /" > $E/p4-python-stat.txt
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/fdescfs-window.py facts --inspector $R/bin/hfs-controlled-runtime; date -u +%s" > $E/p4-facts-and-now.txt
-f3 'sha256 -r /usr/bin/ssh' | diff - $D/facts/f3-usr-bin-ssh-20261125T093805Z.sha256 && echo F1-unchanged
-f3 'env TZ=UTC ps -p 40425 -o lstart=; doas -n ls /dev/vmm; kldstat' > $E/p4-rocky-pin.txt
+f3 'sha256 -r /usr/bin/ssh' | diff - $D/facts/f3-usr-bin-ssh-20261126T064739Z.sha256 && echo F1-unchanged
+f3 'env TZ=UTC ps -p 86754 -o lstart=; doas -n ls /dev/vmm; kldstat' > $E/p4-rocky-pin.txt
 # ==== END Phase-4 block 1 ====
 ```
 
@@ -1710,7 +1731,7 @@ zq3-r1 to zq3-r13; zq3-r8 to zq3-r13 recorded `libpython3.12.so.1.0`
 `6fc7b9b0…` after the 2026-11-10 package update, and the window plan takes live hashes, so any
 other library or a changed hash is a fact change to review),
 `F1-unchanged` (otherwise stop: the filled bootstrap plan pins `6a9e5573…`,
-and refilling F1 is a plan revision), and `Sun Nov 22 17:19:43 2026` with
+and refilling F1 is a plan revision), and `Thu Nov 26 06:46:29 2026` with
 `/dev/vmm` = `rocky` and neither module in `kldstat`.
 
 Split the facts and fill the window plan on the workstation (B) with the r21
@@ -1735,14 +1756,14 @@ f3 doas -n sha256 -r $R/records/fdescfs-plan.json      # must equal $WP
 # ==== END Phase-4 block 2 ====
 ```
 
-F1 (bootstrap `observer.ssh_sha256`) was filled at fill time from the 09:38Z
-fact (`fill_plan.py bootstrap`, plan `43181e44…`, `bootstrap.py check`
+F1 (bootstrap `observer.ssh_sha256`) was filled at fill time from the 06:47Z
+fact (`fill_plan.py bootstrap`, plan `ef005319…`, `bootstrap.py check`
 passed); the `F1-unchanged` line above is its recheck. Nothing to fill here.
 
 Step 1, negative before setup (B; a skip counts as unrun). No `--` before the
 command; a retry takes a new stage name and keeps the refused one. The o54
-host profile needs free ≥ 1 GiB and free + inactive ≥ 3.5 GiB (09:38Z, Rocky running: 5.08 GB
-free, 2.67 GB inactive):
+host profile needs free ≥ 1 GiB and free + inactive ≥ 3.5 GiB (06:47Z, Rocky one minute up: 6.13 GB
+free, 0.34 GB inactive):
 
 ```bash
 # ==== BEGIN Phase-4 block 3 (run each line on its own) ====
@@ -1769,8 +1790,8 @@ It reads no config, starts no child and mounts nothing. Each line on its own:
 ```bash
 # ==== BEGIN Phase-4 block 4 (run each line on its own) ====
 f3 "$NG --stage process-observer $R/bin/hfs-controlled-runtime --check-process-observer" | tee $E/p4-process-observer-guard.json
-f3 "doas -n cat /var/tmp/hfs-20261125-zq3r21-fdq/checks/process-observer/stdout" > $E/p4-process-observer.json
-f3 "doas -n cat /var/tmp/hfs-20261125-zq3r21-fdq/checks/process-observer/stderr" > $E/p4-process-observer.stderr
+f3 "doas -n cat /var/tmp/hfs-20261126-zq3r21-fdq/checks/process-observer/stdout" > $E/p4-process-observer.json
+f3 "doas -n cat /var/tmp/hfs-20261126-zq3r21-fdq/checks/process-observer/stderr" > $E/p4-process-observer.stderr
 python3 -I -B $D/sh/p4-observer.py $E/p4-process-observer-guard.json $E/p4-process-observer.json $E/p4-process-observer.stderr | tee $E/p4-process-observer-check.json
 # ==== END Phase-4 block 4 ====
 ```
@@ -1884,7 +1905,7 @@ and stop then ran on the new instance. These compare with the Phase 1 facts:
 # ==== BEGIN Phase-5 block 2 (run each line on its own) ====
 hpin
 f3 'sysctl -n kern.boottime' > $E/p5-boottime.txt              # expect: { sec = 1794574308, usec = 469376 } Fri Nov 13 14:51:48 2026
-f3 'env TZ=UTC ps -p 40425 -o lstart=' > $E/p5-rocky-lstart.txt  # expect: Sun Nov 22 17:19:43 2026
+f3 'env TZ=UTC ps -p 86754 -o lstart=' > $E/p5-rocky-lstart.txt  # expect: Thu Nov 26 06:46:29 2026
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/fdescfs-window.py facts --inspector $R/bin/hfs-controlled-runtime" > $E/p5-facts.json
 f3 doas -n cat /var/tmp/hfs-fdescfs-windows/zq3-r21/owned.json > $E/p5-owned.json
 python3 -I -B $D/sh/p5-recheck.py $E/p5-boottime.txt $E/p5-rocky-lstart.txt $E/p5-facts.json $E/p5-owned.json | tee $E/p5-recheck.json
@@ -1910,7 +1931,7 @@ Step 1a, memory pre-estimate (B) and the disk-level reference:
 ```bash
 # ==== BEGIN Phase-5 block 3 (run each line on its own) ====
 f3 'doas -n vm list; swapinfo; zfs list -t snapshot -o name,guid -s creation zroot/bhyve/rocky | tail -1' > $E/p5-prestop.txt
-f3 'sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count vm.stats.vm.v_active_count vm.stats.vm.v_laundry_count vm.stats.vm.v_wire_count kstat.zfs.misc.arcstats.size kstat.zfs.misc.arcstats.c_min; ps -p 40425 -o rss=' > $E/p5-mem.txt
+f3 'sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count vm.stats.vm.v_active_count vm.stats.vm.v_laundry_count vm.stats.vm.v_wire_count kstat.zfs.misc.arcstats.size kstat.zfs.misc.arcstats.c_min; ps -p 86754 -o rss=' > $E/p5-mem.txt
 python3 -I -B $D/sh/p5-estimate.py $E/p5-mem.txt | tee $E/p5-estimate.json
 # ==== END Phase-5 block 3 ====
 ```
@@ -1936,10 +1957,10 @@ after its swap clearing put Rocky's pages in laundry (1.09 GB), step 1b
 freed about 0.53 GB, Phase 6 margin 0.26 GB; zq3-r19: margin −1.28 GB
 after its swap clearing (0.99 GB laundry), step 1b freed about 0.78 GB,
 Phase 6 margin 0.37 GB; zq3-r20, with no swap clearing: margin
-+0.26 GB, step 1b freed about 0.18 GB, Phase 6 margin 0.37 GB). At 09:38Z
-(Rocky up 2 days 16 h, iom1-3 stopped) free was 5.08 GB, inactive
-2.67 GB, active 0.51 GB, wired 8.19 GB, ARC 7.22 GB (`c_min` 0.53 GB) and
-**no swap in use**. These are recorded facts only: the iormesh session runs
++0.26 GB, step 1b freed about 0.18 GB, Phase 6 margin 0.37 GB). At 06:47Z
+(Rocky one minute after its maintenance start, iom1-3 stopped) free was
+6.13 GB, inactive 0.34 GB, active 1.41 GB, wired 8.58 GB, ARC 7.56 GB
+(`c_min` 0.53 GB) and **no swap in use**. These are recorded facts only: the iormesh session runs
 its VMs on f3 at times, so Phase 5 measures afresh and decides. `active_based` counts ARC above `c_min` and Active as well, so the
 estimate should be similar to the earlier runs, and Phase 6 decides.
 
@@ -2061,16 +2082,16 @@ f3; on Rocky after U3), then U3.
 
 ```bash
 # ==== BEGIN Phase-7 block 1 (run each line on its own) ====
-f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py setup --record $R/records/bhyve-argv.json --record-sha256 ceeb792f9e2b5e21e63b995debd42d8a3080a4356ace9a0a6fe2026b5dd48692" | tee $E/p7-host-setup.json
-f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/runtime-volume-init.py --plan $R/records/volume-init.json --plan-sha256 ce9469ce0b8799e49f65ee49db8d1651c9afa04d2745425b9b245bc7a8f8425f --record $R/records/volume-init-result.json" | tee $E/p7-volume-init.json
+f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py setup --record $R/records/bhyve-argv.json --record-sha256 e4337b2dfe6ab2ca40cd15973674499c314d54c52152a4a3682a2df8b0a3ce3f" | tee $E/p7-host-setup.json
+f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/runtime-volume-init.py --plan $R/records/volume-init.json --plan-sha256 d192d3f58d142be1c64153c56c8e82bd5d22aa17321ee17628047f60acd46690 --record $R/records/volume-init-result.json" | tee $E/p7-volume-init.json
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host_snapshot.py --run-id zq3-r21 --path $R/runtime/mnt --label baseline" > $E/k04-baseline.json
 # ==== END Phase-7 block 1 ====
 ```
 
 If `host.py setup` refuses only because the UEFI vars hash drifted from
-`9f4fca82…` (any Rocky boot since 09:38Z changes it; it was `5c95aae0…` at
-zq3-r20's fill, and Rocky's last start was zq3-r20's Phase 12 at 2026-11-22
-17:19:43 UTC): stop;
+`883a9566…` (any Rocky boot since 06:47Z changes it; it was `9f4fca82…`
+at the first r21 fill, and Rocky's last start was the maintenance reboot
+at 2026-11-26 06:46:29 UTC): stop;
 regenerating the argv record from fresh facts (same sessions,
 same args) is a plan revision for review, never an on-the-spot edit. Failure
 with no child started: `host.py cleanup --record … --record-sha256 …
@@ -2080,7 +2101,7 @@ required baseline (the empty mount point before the runtime starts).
 ## Phase 8: runtime launch and bootstrap (A3, A4, A7; at most 120 s to READY plus about 100 s for `usable`, about 7 min with prep)
 
 **In-run cutoff (zq3-r13 review round 1).** No new case or lifecycle step
-(T1-T11, T8 included) starts after **22:15 UTC on the run day** (2026-11-25
+(T1-T11, T8 included) starts after **22:15 UTC on the run day** (2026-11-26
 for a run that day; 00:55 EET minus 40 minutes). At 22:15 UTC go straight to Phase 11 (the
 guard-SIGTERM branch while the runtime serves), so that Phase 11 step 5's
 guest poweroff is done **before 22:45 UTC**: Rocky's daily `dnf upgrade` at
@@ -2126,7 +2147,7 @@ Run:
 ```bash
 # ==== BEGIN Phase-8 block 2 (run each line on its own) ====
 python3 -I -B $S/tools/lab/retained9p/bootstrap.py run --plan $P \
-  --plan-sha256 43181e441de5aa196e70cf7379c3db9d99e392b186f85e3ef6dee4d4d4b4f6b8 --output $D/bootstrap-run \
+  --plan-sha256 ef005319d17505bc9b12aef5c05c9ddd2a8071084da564e90e8d7603e3697b94 --output $D/bootstrap-run \
   | python3 -I -B $D/bin/sign_watch.py | tee $E/p8-bootstrap.jsonl
 # ==== END Phase-8 block 2 ====
 ```
@@ -2137,8 +2158,8 @@ READY, `usable` and T1's dispatch). It pins:
 - the NEW daemon `c7b89648…` (go1.27.4; `runtime.sha256`, also the guard's
   `--runtime-sha256` below; Phase 4 step 1a qualifies it; the `usable` gate's
   `host-observe` runs it in client mode);
-- the r21 kernel plan `6b42f667…` (kernel `bd4fa753…`, stock default
-  `741.24.1`) and `rocky_kernel.py` `f17963c1…`;
+- the r21 kernel plan `ef6b688b…` (kernel `bd4fa753…`, stock default
+  `741.27.1`) and `rocky_kernel.py` `f17963c1…`;
 - `bootstrap_remote.py` `5155ff08…` (`remote_sha256`; the b84 `guest-stat`
   and `host-observe` actions, and since bl4 the `--fd-attr` mount option
   with its mountinfo rule);
@@ -2406,8 +2427,8 @@ deferral passes through unchanged. One line each:
 ```bash
 # ==== BEGIN Phase-8 block 4 (run each line on its own) ====
 python3 -I -B $S/tools/lab/retained9p/fill_plan.py batch --template $D/controller/batch-plan.TEMPLATE.json \
-  --template-sha256 99ca489dbffbabfaaa97ef7d66b9418c294e8cfcb933b83beb8284da57c67026 \
-  --bootstrap-run $D/bootstrap-run --bootstrap-plan-sha256 43181e441de5aa196e70cf7379c3db9d99e392b186f85e3ef6dee4d4d4b4f6b8 \
+  --template-sha256 098ca425045a8512f4259fecdf8f97f75b5beaf16c68a584ede25c089c96f97f \
+  --bootstrap-run $D/bootstrap-run --bootstrap-plan-sha256 ef005319d17505bc9b12aef5c05c9ddd2a8071084da564e90e8d7603e3697b94 \
   --output $D/controller/batch-plan.json | tee $E/p8-batch-fill.json
 B=$(jf $E/p8-batch-fill.json sha256); echo "$B"
 $S/tools/lab/check-retained9p.sh check --plan $D/controller/batch-plan.json | tee $E/p8-batch-check.json   # plan_sha256 must equal $B
@@ -3160,8 +3181,8 @@ rocky 'systemctl poweroff'
 # 6. wait for the child: this one bounded loop (pattern [h]fs-zq3-r21, never another run's; zq3-r14 slip) checks every 10 s, at most 90 times (15 min), matching the EXACT line child-gone with grep -x (zq3-r18 slip); tool timeout >= 1200 s; h64: the vmm context stays until step 7
 gone=no; for i in $(seq 90); do if f3 'ps -ax -ww | grep "[h]fs-zq3-r21" || echo child-gone' | grep -qx child-gone; then gone=yes; break; fi; sleep 10; done; echo "child-wait gone=$gone tries=$i $(date -u +%H:%M:%SZ)"   # gone=yes required; gone=no: stop, no forced power-off
 # 7. host cleanup (tap, VM context, vars copy): run exactly ONE of the next two lines; the --child-pid line is the normal case
-f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 ceeb792f9e2b5e21e63b995debd42d8a3080a4356ace9a0a6fe2026b5dd48692 --child-pid $XP" | tee $E/p11-host-cleanup.json   # NORMAL: when step 0 set XP to a PID
-f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 ceeb792f9e2b5e21e63b995debd42d8a3080a4356ace9a0a6fe2026b5dd48692 --no-child" | tee $E/p11-host-cleanup.json   # ONLY if the exporter is None (step 0 printed None and XP is unset); never as a first try (zq3-r18 slip)
+f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 e4337b2dfe6ab2ca40cd15973674499c314d54c52152a4a3682a2df8b0a3ce3f --child-pid $XP" | tee $E/p11-host-cleanup.json   # NORMAL: when step 0 set XP to a PID
+f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 e4337b2dfe6ab2ca40cd15973674499c314d54c52152a4a3682a2df8b0a3ce3f --no-child" | tee $E/p11-host-cleanup.json   # ONLY if the exporter is None (step 0 printed None and XP is unset); never as a first try (zq3-r18 slip)
 # 8. native FUSE mount: check, then unmount if listed
 f3 "mount -p | grep $R/runtime/mnt || echo no-native-mount" | tee $E/p11-native-check.txt
 f3 "doas -n umount $R/runtime/mnt"               # only if step 8's check listed it; busy or error: stop and preserve
@@ -3251,7 +3272,7 @@ leftover mount first (zq3-r2's cause was the skipped step 8).
 f3 'ls -ld /var/tmp/homelabfs-9p-poc/share'           # R6: vm-bhyve's normal start needs it
 $S/tools/lab/vms.sh --approved-action start-rocky    # only after Phase 11 verified next_entry empty and the child gone
 rockywait 36                                         # in bash that sourced session.sh (the wrapper is fine), never a bare bash -c; tool timeout >= 900 s (up to about 720 s); prints rocky-ssh-up try N HH:MM:SSZ
-rocky "$K check --expect stock $KP; getenforce; sha256sum /root/.ssh/authorized_keys; free -m"   # check --expect stock: running = grub default = 5.14.0-741.24.1.el9_9 (never 6.1.190-hfs-xz3); authorized_keys must be e08542dc…
+rocky "$K check --expect stock $KP; getenforce; sha256sum /root/.ssh/authorized_keys; free -m"   # check --expect stock: running = grub default = 5.14.0-741.27.1.el9_9 (never 6.1.190-hfs-xz3); authorized_keys must be e08542dc…
 rocky 'ls -l /.autorelabel 2>&1; cat /proc/sys/kernel/random/boot_id; journalctl --list-boots --no-pager | tail -n 4' | tee $E/p12-relabel.txt
 f3 'doas -n tail -n 30 /zroot/bhyve/rocky/vm-bhyve.log' > $E/p12-vm-bhyve-log.txt
 f3 'env TZ=UTC ps -ax -o pid= -o lstart= -o command= | grep "[b]hyve: rocky"' | tee $E/p12-rocky-pid.txt
@@ -3301,9 +3322,9 @@ two (zq3-r1's U3: 16 s). With one, it answers after about 5 more minutes:
 on `rocky-ssh-timeout` run `rockywait 36` once more; if Rocky still does not
 answer, stop and inspect (vm-bhyve log, `vm list`), never force. Run the
 `check` line only once SSH answers. Record the new PID, lstart and boot ID
-for the next fill. The stock boot is `741.24.1.el9_9`, Rocky's grub
-default and `saved_entry` (an ordinary stock boot, as zq3-r20's Phase 12
-was): **the restored kernel must be the stock `5.14.0-741.24.1.el9_9`, and
+for the next fill. The stock boot is `741.27.1.el9_9`, Rocky's grub
+default and `saved_entry` (an ordinary stock boot, as the 2026-11-26
+maintenance reboot was): **the restored kernel must be the stock `5.14.0-741.27.1.el9_9`, and
 the custom `6.1.190-hfs-xz3` never becomes Rocky's default** (it is only
 ever the one-shot `next_entry`, consumed by the Phase 8 boot and verified
 empty in Phase 11; U2 then removes it). Expect Rocky's upgrade timer to tick about 10 minutes
@@ -3313,7 +3334,7 @@ reboot.
 Staging prefix deletion is a separate, later step after the evidence is safe
 and `mount -p` shows nothing below `/var/tmp/hfs-validation-xz3`. Left on f3
 as evidence:
-- `$R`, `/var/tmp/hfs-20261125-zq3r21-fdq` and
+- `$R`, `/var/tmp/hfs-20261126-zq3r21-fdq` and
   `/var/tmp/hfs-fdescfs-windows/zq3-r21`;
 - the zq3-r1 to zq3-r20 directories.
 
@@ -3359,7 +3380,7 @@ time, as in zq3-r20. The lines new or changed for zq3-r21:
 # ==== BEGIN Run-log-template block 1 (text: not a command, never run) ====
 - <UTC> Session: every line in bash through the wrapper (session.sh + vars.env); zsh never used: yes|no.
 - <UTC> N1: Rocky clock Europe/Sofia (timedatectl, R1): yes|no; stamp .. and dnf newest #.. (p1-upgrade.json, dnf_unchanged True|False); Phase 5 nightly-gate GO|STOP at ..Z; Phase 1 pod runtime (p1-pod-runtime.txt) unchanged: True|False; kernel facts unchanged: yes|no.
-- <UTC> Phase 1 passed: ... fusefs.ko (id ..) and fdescfs.ko (id ..) loaded, no fuse/fdesc mount, inet 10.20.0.133 on vm-public, vars .., swap 0 used yes|no, Rocky PID 40425 running .. = default .. (741.24.1)
+- <UTC> Phase 1 passed: ... fusefs.ko (id ..) and fdescfs.ko (id ..) loaded, no fuse/fdesc mount, inet 10.20.0.133 on vm-public, vars .., swap 0 used yes|no, Rocky PID 86754 running .. = default .. (741.27.1)
 - <UTC> Phase 1a: before-unload Refs 1/1, no-fuse-fdesc-mounts; kldunload fusefs rc .., kldunload fdescfs rc ..; after-unload kldstat lists neither.
 - <UTC> Phase 3: kernel install BLS .. for build ID bd4fa753 (bzImage 74728cac); pod manifest PM=.. (expected 34a71569 as in zq3-r15 to zq3-r20; any other digest explained ..); pod build ..
 - <UTC> Phase 4 step 1a process observer (NEW go1.27.4 daemon): PASS|FAIL for c7b89648 (uid/gid .., groups .., pid ..).
@@ -3390,7 +3411,7 @@ time, as in zq3-r20. The lines new or changed for zq3-r21:
 # ==== END Run-log-template block 1 ====
 ```
 
-**zq3-r15 review round 1 (2026-11-19), kept:** tool-timeout comments on every $CTL, lock-probe (>= 300 s) and T7 pod run (>= 420 s) line; the D1 module ids (now 37/38, from the 09:38Z facts); the facts time in EET.
+**zq3-r15 review round 1 (2026-11-19), kept:** tool-timeout comments on every $CTL, lock-probe (>= 300 s) and T7 pod run (>= 420 s) line; the D1 module ids (now 37/38, from the 06:47Z facts); the facts time in EET.
 
 **zq3-r16 review round 1 (2026-11-20), kept:** the zq3-r14 note's boot ID (`b4d9ee31`), the git-diff scope wording, a tool-timeout comment on `$CTL status`.
 

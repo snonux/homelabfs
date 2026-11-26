@@ -1,0 +1,51 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+Packages Altered:
+    Install       kernel-5.14.0-741.27.1.el9_9.x86_64              @baseos
+    Install       kernel-core-5.14.0-741.27.1.el9_9.x86_64         @baseos
+    Install       kernel-modules-5.14.0-741.27.1.el9_9.x86_64      @baseos
+    Install       kernel-modules-core-5.14.0-741.27.1.el9_9.x86_64 @baseos
+    Install       kernel-devel-5.14.0-741.27.1.el9_9.x86_64        @appstream
+    Upgrade       kernel-tools-5.14.0-741.27.1.el9_9.x86_64        @baseos
+    Upgraded      kernel-tools-5.14.0-741.24.1.el9_9.x86_64        @@System
+    Upgrade       kernel-tools-libs-5.14.0-741.27.1.el9_9.x86_64   @baseos
+    Upgraded      kernel-tools-libs-5.14.0-741.24.1.el9_9.x86_64   @@System
+    Upgrade       kernel-headers-5.14.0-741.27.1.el9_9.x86_64      @appstream
+    Upgraded      kernel-headers-5.14.0-741.24.1.el9_9.x86_64      @@System
+    Upgrade       ruby-3.0.7-171.el9_9.x86_64                      @appstream
+    Upgraded      ruby-3.0.7-170.el9_8.x86_64                      @@System
+    Upgrade       ruby-default-gems-3.0.7-171.el9_9.noarch         @appstream
+    Upgraded      ruby-default-gems-3.0.7-170.el9_8.noarch         @@System
+    Upgrade       ruby-libs-3.0.7-171.el9_9.x86_64                 @appstream
+    Upgraded      ruby-libs-3.0.7-170.el9_8.x86_64                 @@System
+    Upgrade       rubygem-bigdecimal-3.0.0-171.el9_9.x86_64        @appstream
+    Upgraded      rubygem-bigdecimal-3.0.0-170.el9_8.x86_64        @@System
+    Upgrade       rubygem-bundler-2.2.33-171.el9_9.noarch          @appstream
+    Upgraded      rubygem-bundler-2.2.33-170.el9_8.noarch          @@System
+    Upgrade       rubygem-io-console-0.5.7-171.el9_9.x86_64        @appstream
+    Upgraded      rubygem-io-console-0.5.7-170.el9_8.x86_64        @@System
+    Upgrade       rubygem-json-2.5.1-171.el9_9.x86_64              @appstream
+    Upgraded      rubygem-json-2.5.1-170.el9_8.x86_64              @@System
+    Upgrade       rubygem-psych-3.3.2-171.el9_9.x86_64             @appstream
+    Upgraded      rubygem-psych-3.3.2-170.el9_8.x86_64             @@System
+    Upgrade       rubygem-rdoc-6.3.4.1-171.el9_9.noarch            @appstream
+    Upgraded      rubygem-rdoc-6.3.4.1-170.el9_8.noarch            @@System
+    Upgrade       rubygems-3.2.33-171.el9_9.noarch                 @appstream
+    Upgraded      rubygems-3.2.33-170.el9_8.noarch                 @@System
+    Upgrade       webkit2gtk3-jsc-2.54.3-1.el9_9.x86_64            @appstream
+    Upgraded      webkit2gtk3-jsc-2.54.2-3.el9_9.x86_64            @@System
+    Reason Change kernel-5.14.0-741.22.1.el9_9.x86_64              @baseos
+    Removed       kernel-5.14.0-687.66.1.el9_8.x86_64              @@System
+    Reason Change kernel-core-5.14.0-741.22.1.el9_9.x86_64         @baseos
+    Removed       kernel-core-5.14.0-687.66.1.el9_8.x86_64         @@System
+    Reason Change kernel-devel-5.14.0-741.22.1.el9_9.x86_64        @appstream
+    Removed       kernel-devel-5.14.0-687.66.1.el9_8.x86_64        @@System
+    Reason Change kernel-modules-5.14.0-741.22.1.el9_9.x86_64      @baseos
+    Removed       kernel-modules-5.14.0-687.66.1.el9_8.x86_64      @@System
+    Reason Change kernel-modules-core-5.14.0-741.22.1.el9_9.x86_64 @baseos
+    Removed       kernel-modules-core-5.14.0-687.66.1.el9_8.x86_64 @@System
+== needs-restarting
+No core libraries or services have been updated since boot-up.
+Reboot should not be necessary.
+rc=0

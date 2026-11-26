@@ -1,4 +1,4 @@
-# zq3-r21 filled run inputs (2026-11-25)
+# zq3-r21 filled run inputs (2026-11-25, refilled 2026-11-26)
 
 [Run sheet](run-sheet.md) · [Pins](pins.json) · [Phase 1 facts](facts/) ·
 [Run plan](../../zq3-run-plan.md) · [zq3-r20 fill](../20261122-zq3-r20-filled-plan/README.md) ·
@@ -6,11 +6,48 @@
 [r21 candidate](../../../../tools/integration/artifacts/evidence/xz3-20261125-r21/README.md) ·
 [`hfs_fdattr`](../../../../tools/lab/retained9p/README.md#hfs_fdattr-mounts-bl4-s64)
 
-**2026-11-26 refresh: STOP.** Rocky's dnf #68 installed the stock kernel
-`741.27.1` as the grub default while Rocky still runs `741.24.1` (the N1
-kernel split), so Phase 1 and Phase 3 refuse. These inputs need an approved
-maintenance reboot and a refill first; see
-[ADDENDUM-20261126.md](ADDENDUM-20261126.md).
+**2026-11-26 refill (current).** The 06:31Z refresh found the N1 kernel
+split ([ADDENDUM-20261126.md](ADDENDUM-20261126.md)): Rocky's dnf #68
+installed the stock kernel `741.27.1` as the grub default while Rocky still
+ran `741.24.1`. Then:
+1. **Maintenance reboot (Paul's approval).** iormesh stopped iom1 first,
+   and a read-only check at 06:46:11Z found:
+   - only `rocky` running, `/dev/vmm` = `rocky`;
+   - the hfs-test guests stopped;
+   - swap 0.
+
+   Claude ran `tools/lab/vms.sh --approved-action stop-rocky` at 06:46:19Z
+   (clean ACPI; `vm list` showed Rocky Stopped at 06:46:25Z) and
+   `start-rocky` at 06:46:28Z (bhyve PID 86754, lstart 06:46:29Z).
+   - **Rocky was down from 06:46:19Z until pinned SSH answered at
+     06:46:47Z (28 s).** systemd reached `running` at 06:47:07Z, with no
+     failed unit.
+   - Verified: `uname -r` = `5.14.0-741.27.1.el9_9.x86_64` = grub default
+     = `saved_entry`; `next_entry` empty; Enforcing; no `/.autorelabel`;
+     `needs-restarting -r` clean; new boot ID
+     `69aefe1f-db9f-48b3-aff4-86cc549b0cc8`; one vm-bhyve run (no
+     relabel).
+   - Nothing was forced.
+2. **Refill** from fresh read-only facts (2026-11-26 06:47:39Z, below):
+   - the kernel plan with stock default
+     `/boot/vmlinuz-5.14.0-741.27.1.el9_9.x86_64`;
+   - the new UEFI vars `883a9566…`, hence a new argv record and a new
+     bundle with new sessions;
+   - new bootstrap and batch pins and new staging tarballs;
+   - the native guard root `/var/tmp/hfs-20261126-zq3r21-fdq`;
+   - Rocky's new PID, lstart and boot ID in `NG`, `p5-recheck.py` and
+     `p5-estimate.py`;
+   - `n1-gate.py` expecting #68;
+   - the matching sheet lines; Phase 12 restores the stock `741.27.1`.
+
+   Unchanged:
+   - the candidate, all tools and the prep/signer binaries;
+   - the pod template (dnf #68 changed no pod runtime file) and both ssh
+     pins;
+   - the window pins and the `hfs_fdattr` decision.
+
+   The 2026-11-25 generation is kept privately in
+   `…/zq3-r21-fill/superseded-20261125/`.
 
 These are the exact run inputs for `zq3-r21`, the twenty-first attempt of
 zq3: Phases 0 and 1 of the [run plan](../../zq3-run-plan.md) only. They were
@@ -24,7 +61,7 @@ advance. Phase 11 and 12 were clean.
 
 The changes are:
 - the run ID (`zq3-r21`) and the native guard root
-  `/var/tmp/hfs-20261125-zq3r21-fdq` (fill date 2026-11-25);
+  `/var/tmp/hfs-20261126-zq3r21-fdq` (refill date 2026-11-26);
 - the **second r21 candidate `f21450ec…`** (source `3081d31`, Fedora 45
   toolchain), with three new parts:
   - the guest kernel (build ID `bd4fa753…`; s64, hh4, dh4, 5f4, kn1, wj4
@@ -110,7 +147,7 @@ Checked locally:
   "bootstrap plan names fd_attr candidate f21450ec… but its mounts do not
   show hfs_fdattr".
 
-## Phase 1 facts (2026-11-25 09:38:05Z)
+## Phase 1 facts (2026-11-26 06:47:39Z, after the maintenance reboot)
 
 Read-only, one bounded batch per host, stdout and stderr kept apart:
 - `ssh -F /dev/null` with `StrictHostKeyChecking=yes`, no global
@@ -119,68 +156,83 @@ Read-only, one bounded batch per host, stdout and stderr kept apart:
 - Rocky through f3 with `docs/lab/rocky-known_hosts` (alias `rocky`).
 
 The only `doas` commands were `vm list`, `ls /dev/vmm`, `test -e` and
-`host.py facts` from stdin. A follow-up read
-(`dnf history info 67`, `needs-restarting -r`) was added after the first
-batch showed a new transaction.
+`host.py facts` from stdin. A follow-up read covered `dnf history info 68`
+and `needs-restarting -r`. The superseded fact sets are kept as public
+copies too, stamped `20261125T093805Z` (the first fill) and
+`20261126T063140Z` (the pre-reboot refresh, see the addendum).
 
 **f3:**
 - boot `1794574308`, unchanged since Paul's 2026-11-13 reboot;
-- `vm list`: `rocky` Running (PID 40425); `freebsd`, `hfs-test0..2` and
-  **iom1, iom2, iom3 Stopped**; no iormesh k3s VM listed; `/dev/vmm`
-  holds only `rocky`;
+- `vm list`: `rocky` Running (PID 86754); `freebsd`, `hfs-test0..2` and
+  **iom1, iom2, iom3 Stopped**; no iormesh k3s VM listed; `/dev/vmm` holds
+  only `rocky`; `vm-public` members `tap0`, `re0`;
 - swap 0 used;
-- memory (a record only, not a headroom judgement, since the iormesh VMs
-  come and go):
+- memory (a record only, not a headroom judgement; one minute after
+  Rocky's start):
 
   | Item | Value |
   |---|---|
   | physmem | 16,879,837,184 |
-  | free | 1,240,779 pages, 5.08 GB |
-  | inactive | 2.67 GB |
-  | active | 0.51 GB |
-  | wired | 8.19 GB |
-  | ARC | 7.22 GB (`c_min` 0.53 GB) |
+  | free | 1,496,455 pages, 6.13 GB |
+  | inactive | 0.34 GB |
+  | active | 1.41 GB |
+  | wired | 8.58 GB |
+  | ARC | 7.56 GB (`c_min` 0.53 GB) |
 
-- `fdescfs.ko` (id 37) and `fusefs.ko` (id 38) loaded, left by zq3-r20,
-  with no fuse/fdesc mount: **Phase 1a runs**;
-- the r21 paths are absent, and `10.20.0.133` is on `vm-public` (members
-  `tap0`, `re0`);
+- `fdescfs.ko` (id 37) and `fusefs.ko` (id 38) still loaded, left by
+  zq3-r20, with no fuse/fdesc mount: **Phase 1a runs**;
+- the r21 paths are absent (guard root now `hfs-20261126-zq3r21-fdq`);
 - the PoC share is present, zroot is ONLINE with 344G free, and
-  `/usr/bin/ssh` is `6a9e5573…` (unchanged);
-- the launch facts equal those after zq3-r20's Phase 12 start: UEFI vars
-  `9f4fca82…`, `rocky.conf` `c101adf1…`, vm-run `43753bc8…`, firmware
-  `6b48e967…`.
+  `/usr/bin/ssh` is `6a9e5573…` (unchanged, F1 holds);
+- launch facts:
+  - **UEFI vars `883a9566…`** (new: the reboot changed them; `9f4fca82…`
+    before);
+  - `rocky.conf` `c101adf1…`, vm-run `43753bc8…` and firmware
+    `6b48e967…`, all unchanged.
 
 **Rocky:**
-- **runs the stock `5.14.0-741.24.1.el9_9.x86_64`**, which is also the
-  grub default and `saved_entry`; `next_entry` is empty;
-- up 2 days 16:18, PID `40425` (lstart `Sun Nov 22 17:19:43 2026` UTC,
-  zq3-r20's Phase 12 start), boot ID
-  `9a3774b8-fcb1-471c-9b00-8a1bfb089f57`;
+- **runs the stock `5.14.0-741.27.1.el9_9.x86_64`**, which is also the
+  grub default and `saved_entry`; `next_entry` is empty. Grub entries:
+  7.0.3 elrepo, 6.1.190 elrepo, 741.27.1, 741.24.1, 741.22.1, rescue;
+- PID `86754`, lstart `Thu Nov 26 06:46:29 2026` UTC, boot ID
+  `69aefe1f-db9f-48b3-aff4-86cc549b0cc8`;
 - Enforcing, no `/.autorelabel`, no `hfs-xz3` file in `/boot`, no
   `/etc/homelabfs`;
 - `authorized_keys` `e08542dc…` (one line), python3.9 `729ac37f…`.
 
 **Rocky's upgrade:**
 - clock `Europe/Sofia (EET, +0200)`, synchronized;
-- stamp `2026-11-25`; newest dnf transaction **#67** (2026-11-25 00:55
-  EET, 14 packages): openssh 9.9p1-17, flatpak, golang 1.27.4, libgsf,
-  **podman and podman-docker `5.8.5-5.el9_9`**, xdg-desktop-portal;
-- **no kernel**, and `needs-restarting -r` says no reboot is needed. The
-  hourly ticks still log "reboot deferred", as every tick does;
-- crun, conmon and seccomp.json are byte-identical; **podman changed**
-  (`8d94a8fb…`), so the pod template's podman pins are refilled.
+- stamp `2026-11-26`; newest dnf transaction **#68** (2026-11-26 00:55
+  EET, 29 packages):
+  - the stock kernel `741.27.1` (kernel, -core, -modules, -modules-core,
+    -devel), now the grub default;
+  - kernel-tools/-libs/-headers;
+  - ruby 3.0.7-171 and its gems;
+  - webkit2gtk3-jsc 2.54.3;
+  - the 687.66.1 kernel removed;
+- after the reboot `needs-restarting -r` is clean;
+- the pod runtime is byte-identical to the first fill (podman `8d94a8fb…`
+  `5.8.5-5.el9_9`, crun, conmon, seccomp), so **the pod template is
+  unchanged**.
 
-The public [facts/](facts/) holds eight files:
-- f3: the launch facts, the Phase 1 batch, network/modules;
-- Rocky: grub, pod runtime, upgrade, dnf #67 and uptime.
+The public [facts/](facts/) holds the f3 launch facts, the Phase 1 batch
+and network/modules, and Rocky grub, pod runtime, upgrade, dnf #68 and
+uptime for each stamp. The Rocky Phase 1 batch, the stderr files and the f3
+ssh hash line stay in the private fill.
 
-The Rocky Phase 1 batch, the stderr files and the f3 ssh hash line stay in
-the private fill.
+**N1 for 2026-11-26:** the next dnf run is 2026-11-27 00:55 EET =
+**2026-11-26 22:55 UTC**:
 
-**N1:** the next dnf run is 2026-11-26 00:55 EET = **2026-11-25
-22:55 UTC**, so a run today must start Phase 5 by **21:25 UTC**. The gate
-recomputes this on any later day.
+| Bound | Time (UTC) |
+|---|---|
+| Latest Phase 5 start | **21:25** |
+| No new case or step after | 22:15 |
+| Fallback (observer removal and poweroff at once) | 22:35 |
+| Guest poweroff before | 22:45 |
+
+`n1-gate.py gate` on the new facts printed GO at 06:49Z, and `phase1`
+reports `dnf_unchanged: true` (#68). The gate recomputes these times on
+any later day.
 
 ## Inputs
 
@@ -192,7 +244,7 @@ recomputes this on any later day.
 | Lab tools | re-pinned (`git diff e2f406a 95f6d84 -- tools/lab docs/lab/zq3-fdescfs-window internal/runtimeprep/testdata`): `controller.py` `7b36d974…` and `rocky_kernel.py` `f17963c1…` (admit only `f21450ec…`; `FD_ATTR`), `bootstrap.py` `b8714120…`, `bootstrap_remote.py` `5155ff08…`, `fill_plan.py` `1a32774d…`, `guest.py` `746a67bc…`, `correlate.py` `d20f9753…`, `pod_fixture.py` `7c1e545f…`, `argv.py` `940d4787…`, the window `pins.json` and `build-record.json` |
 | Unchanged tools | `guest-lock-probe.py` `fd439897…`, `pod_workload.py` `c714370f…`, `observer.py` `2e1449dd…`, `observer_key.py` `cd7f38c2…`, `host.py` `738e1ca5…`, `host_snapshot.py` `b29ffed2…`, `runtime-guard.py` `fece96b3…`, native test guard `576d802a…`; every staged copy is re-hashed against main by `build-stage.sh` |
 | Runtime spec | `internal/runtimeprep/testdata/zq3-spec.json` at `95f6d84`: now pins the exporter `8cadae40…`, otherwise unchanged (`ControlTickets` 24). `make-spec.py` changes only the run ID and the operator key path |
-| Facts | 2026-11-25 09:38:05Z (stamp `20261125T093805Z`), above |
+| Facts | 2026-11-26 06:47:39Z (stamp `20261126T064739Z`, after the maintenance reboot), above |
 
 ## Prep compatibility with the candidate daemon
 
@@ -212,26 +264,26 @@ The generated `generation.json`, `request-template.json` and
 | Step | Result | Key hashes |
 |---|---|---|
 | Tools | **Rebuilt** at `95f6d84` with go1.27.4-X:nodwarf5 (`-trimpath`, CGO, VCS stamps, unmodified private clone, `vcs.modified=false`); a second build of each, forced with `-a`, gave the same bytes | prep `39d97a90…`, signer `56147372…`, helper `8c02b98f…` |
-| 1. Bundle | `hfs-runtime-prep generate` from the committed spec (`make-spec.py`); the spec equals zq3-r20's renamed plus the exporter | spec `f3214dda…`, request template `628ea087…`, runtime config `ecf9ce3d…`, volume-init `ce9469ce…`; volume `7c10fb99-…`; sessions hfs0 `a37b9380-…`, hfs1 `460c7ff8-…` |
-| 1. Argv | `argv.py generate` from the 09:38:05Z launch facts (sessions, `tap100`), then `argv.py verify` **pass** and `hfs-runtime-prep check-argv` **pass** | record `ceeb792f…`, args `ce46e147…`, vars `9f4fca82…`, exporter `8cadae40…` |
-| 2. Kernel plan | `rocky_kernel.py plan` at main, stock default `/boot/vmlinuz-5.14.0-741.24.1.el9_9.x86_64`. The first r21 package `1428d4db…` is refused ("superseded xz3 candidate manifest; use the second r21 rebuild (f21450ec)") | plan `6b42f667…`, build ID `bd4fa753…` |
-| 3. Batch template | Derived from zq3-r20's by `derive-templates.py`: run ID, fill path, sessions, candidate `b37bcb06…` → `f21450ec…`, `probe_sha256` guest.py `746a67bc…`, ssh `d4c70b09…`, **`fd_attr` true** (plan and requests). be4 seconds 240/255 kept (checked); **T5 stays deferred** with the r9 reason. `check` refuses the template as designed; a zero-ID copy **passes**; the refusals are listed in [pins](pins.json) `controller_batch.synthetic_checks` (r20 and first-r21 candidates superseded, zq3-r14 seconds, no deferral, `credentials` deferred, the three fd_attr shapes) | template `99ca489d…`, synthetic `bda86daf…` |
-| 4. Bootstrap plan | Derived from zq3-r20's: new bundle, kernel plan, `rocky_kernel.py`, prep, daemon `c7b89648…`, `bootstrap_remote.py`, ssh pins and the three fd_attr fields. The unfilled template refuses (`observer.ssh_sha256: SHA256 hex`); **F1 filled now** with `fill_plan.py bootstrap` from the 09:38Z f3 `sha256 -r /usr/bin/ssh` line (`6a9e5573…`, unchanged), then `bootstrap.py check` **pass** | template `5e00ef96…`, filled plan `43181e44…` |
+| 1. Bundle | `hfs-runtime-prep generate` from the committed spec (`make-spec.py`); the spec equals zq3-r20's renamed plus the exporter | spec `f3214dda…`, request template `ef428094…`, runtime config `5c4797cb…`, volume-init `d192d3f5…`; volume `ec009977-…`; sessions hfs0 `05e05279-…`, hfs1 `6a28e672-…` |
+| 1. Argv | `argv.py generate` from the 06:47:39Z launch facts (sessions, `tap100`), then `argv.py verify` **pass** and `hfs-runtime-prep check-argv` **pass** | record `e4337b2d…`, args `e850372f…`, vars `883a9566…`, exporter `8cadae40…` |
+| 2. Kernel plan | `rocky_kernel.py plan` at main, stock default `/boot/vmlinuz-5.14.0-741.27.1.el9_9.x86_64`. The first r21 package `1428d4db…` is refused ("superseded xz3 candidate manifest; use the second r21 rebuild (f21450ec)") | plan `ef6b688b…`, build ID `bd4fa753…` |
+| 3. Batch template | Derived from zq3-r20's by `derive-templates.py`: run ID, fill path, sessions, candidate `b37bcb06…` → `f21450ec…`, `probe_sha256` guest.py `746a67bc…`, ssh `d4c70b09…`, **`fd_attr` true** (plan and requests). be4 seconds 240/255 kept (checked); **T5 stays deferred** with the r9 reason. `check` refuses the template as designed; a zero-ID copy **passes**; the refusals are listed in [pins](pins.json) `controller_batch.synthetic_checks` (r20 and first-r21 candidates superseded, zq3-r14 seconds, no deferral, `credentials` deferred, the three fd_attr shapes) | template `098ca425…`, synthetic `e45399a1…` |
+| 4. Bootstrap plan | Derived from zq3-r20's: new bundle, kernel plan, `rocky_kernel.py`, prep, daemon `c7b89648…`, `bootstrap_remote.py`, ssh pins and the three fd_attr fields. The unfilled template refuses (`observer.ssh_sha256: SHA256 hex`); **F1 filled now** with `fill_plan.py bootstrap` from the 06:47Z f3 `sha256 -r /usr/bin/ssh` line (`6a9e5573…`, unchanged), then `bootstrap.py check` **pass** | template `c1e6d30a…`, filled plan `ef005319…` |
 | 5. Guard argv | zq3-r20's with **`--runtime-sha256 c7b89648…`** and `--disposable-validation` once, last; equal to `bootstrap.py`'s own `SshRemote.guard_argv()` (shell string and argv) and passes `runtime-guard.py`'s `parse_args` and `check_command` | `44baa7ac…` |
 | 6. Pod template | zq3-r20's `/2` template, run ID renamed, `fixture_sha256` pl4's `7c1e545f…`, **podman pins refilled from the facts** (`8d94a8fb…`, `podman-6:5.8.5-5.el9_9.x86_64`). The committed `pod_fixture.py` accepts it and refuses the malformed variants and zq3-r20's fixture pin. **Expected rootfs manifest `34a71569…`** (an expectation, not a pin) | pod template `d96dc035…` |
 | 7. Lock-probe templates | zq3-r20's, run ID renamed (150/240); the filled requests pass `validate_request`, case 151 refuses | m0 `c8ec5bee…`, m1-T8 `6a2d8b19…` |
-| 8. Staging | `build-stage.sh`: 17 f3 and 18 Rocky files, two deterministic tarballs (a second tar run gave the same hashes); a verification extract matched all 35 hashes; the f3 tarball holds only `0/0` entries, modes `0700`/`0500`/`0400`, no parent entry; extract deleted. Against zq3-r20: f3 `argv.py`, bhyve, the two window artifacts, the daemon, argv record, volume-init and runtime config; Rocky bzImage, config, System.map, plan, `rocky_kernel.py` and `pod_fixture.py` changed | f3 tar `e8ab0797…`, Rocky tar `d69781f6…` |
+| 8. Staging | `build-stage.sh`: 17 f3 and 18 Rocky files, two deterministic tarballs (a second tar run gave the same hashes); a verification extract matched all 35 hashes; the f3 tarball holds only `0/0` entries, modes `0700`/`0500`/`0400`, no parent entry; extract deleted. Against zq3-r20: f3 `argv.py`, bhyve, the two window artifacts, the daemon, argv record, volume-init and runtime config; Rocky bzImage, config, System.map, plan, `rocky_kernel.py` and `pod_fixture.py` changed | f3 tar `7cd0b60c…`, Rocky tar `5c521920…` |
 | 9. Window pins | `docs/lab/zq3-fdescfs-window/pins.json` at main with `zq3-r1` → `zq3-r21`. Synthetic fills (not pins): zq3-r8's real Phase 4 facts with the r21 hashes **pass**; the r20 or xc4 hashes **refuse** (`pinned artifact differs or missing`); facts with both modules loaded **refuse** (`fdescfs module present`): hence Phase 1a | r21 pins `1ae0860e…` |
 | 10. Signing watcher | zq3-r20's with `D`, the comments and **the signer pin** changed; tested with a fake signer (wrong hash, command, action and repeat refused; both exact requests signed; the real pin refuses the fake binary) | `8aeb82fc…` |
-| 11. Process observer check | `sh/p4-observer.py` with **the daemon pin `c7b89648…`**; zq3-r20's real records (renamed, hash substituted) **pass**, unchanged they are refused for the `sha256` only; the `$NG` line (Rocky PID `40425`) passes the native guard's `parse_args` and `check_request` | `9c81a284…` |
-| 12. N1 gate helper | `sh/n1-gate.py` with `FACTS_TOP` **#67 of 2026-11-25 00:55**. Fixed-time tests for 2026-11-25: 10:30Z (also with the real record), 21:20Z and 21:25Z GO; 21:30Z, 22:56Z, 23:10Z STOP; the next day with the old Phase 1 STOP, fresh GO; a stale stamp STOP; 01:00Z GO; `phase1` true for the real facts (#67), false for #66 and #68 (14 cases) | `78cbcd3f…` |
+| 11. Process observer check | `sh/p4-observer.py` with **the daemon pin `c7b89648…`**; zq3-r20's real records (renamed, hash substituted) **pass**, unchanged they are refused for the `sha256` only; the `$NG` line (Rocky PID `86754`) passes the native guard's `parse_args` and `check_request` | `9c81a284…` |
+| 12. N1 gate helper | `sh/n1-gate.py` with `FACTS_TOP` **#68 of 2026-11-26 00:55** (refill). Fixed-time tests for 2026-11-26: 07:30Z (also with the real record), 21:20Z and 21:25Z GO; 21:30Z, 22:56Z, 23:10Z STOP; the next day with the old Phase 1 STOP, fresh GO; a stale stamp STOP; 01:00Z GO; `phase1` true for the real facts (#68), false for #67 and #69 (14 cases) | `564547db…` |
 | 13. Recall helper | `sh/recalls.py` also prints vj4's **`self_admissions`** (null while absent); tested on zq3-r20's real OBSERVEs (10 recalls, advances 0, self_admissions null), a synthetic copy (advances 37, self_admissions 5) and an existing output (exit 2) | `1d39257a…` |
-| 14. Other helpers | `p5-recheck.py` and `p5-estimate.py` pin Rocky PID 40425 / lstart 17:19:43; `p10-requests.py` the three r21 templates; `p11-fence.py` (docstring); guard budget unchanged and retested on zq3-r20's real journal (all latest starts GO, one second later STOP; malformed journals `rc=2`); `p1-f3.sh` also lists every bhyve process and zroot | [pins](pins.json) `fill_helpers` |
-| 15. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12 with every kept rule, the zq3-r20 run notes, "New for zq3-r21", BEGIN/END markers in all 48 code blocks, the fd_attr expectations (Phase 8 mountinfo, Phase 9 tuple, T3 peer rename), the stock-kernel rule (Phase 3, 12), the iormesh rule and a run log template. `session.sh` `dff08094…` (hpin over 19 files) | [pins](pins.json) `fill_helpers` |
+| 14. Other helpers | `p5-recheck.py` and `p5-estimate.py` pin Rocky PID 86754 / lstart 06:46:29 (refill); `p10-requests.py` the three r21 templates; `p11-fence.py` (docstring); guard budget unchanged and retested on zq3-r20's real journal (all latest starts GO, one second later STOP; malformed journals `rc=2`); `p1-f3.sh` also lists every bhyve process and zroot | [pins](pins.json) `fill_helpers` |
+| 15. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12 with every kept rule, the zq3-r20 run notes, "New for zq3-r21", BEGIN/END markers in all 48 code blocks, the fd_attr expectations (Phase 8 mountinfo, Phase 9 tuple, T3 peer rename), the stock-kernel rule (Phase 3, 12), the iormesh rule and a run log template. `session.sh` `d26cd441…` (hpin over 19 files) | [pins](pins.json) `fill_helpers` |
 
 Staging recipe (both tarballs, deterministic):
-`tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-25T00:00:00Z --format=gnu`.
-The f3 tarball holds only `hfs-20261125-zq3r21-fdq` and
+`tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-26T00:00:00Z --format=gnu`.
+The f3 tarball holds only `hfs-20261126-zq3r21-fdq` and
 `hfs-validation-xz3/zq3-r21`, with **no entry for the existing parent**.
 
 ## Signing
@@ -262,12 +314,12 @@ with these values changed:
 
 | Fill | When and source | Used by |
 |---|---|---|
-| N1 | Phase 1: `n1-gate.py phase1` expects **#67**; the running kernel must equal the grub default **`741.24.1`** | Phase 1 Rocky gate, Phase 3 install, Phase 5 go/no-go, T7 |
-| D1 | **D1-a, Phase 1a**: both modules are loaded (09:38Z: ids 37 and 38) | Phase 4 step 0 window plan fill |
-| F1 f3 `/usr/bin/ssh` SHA256 | **filled at fill time** (`6a9e5573…`, from the 09:38Z fact); Phase 4 step 0 rechecks it | bootstrap `observer.ssh_sha256` (plan `43181e44…`) |
+| N1 | Phase 1: `n1-gate.py phase1` expects **#68**; the running kernel must equal the grub default **`741.27.1`** | Phase 1 Rocky gate, Phase 3 install, Phase 5 go/no-go, T7 |
+| D1 | **D1-a, Phase 1a**: both modules are loaded (06:47Z: ids 37 and 38) | Phase 4 step 0 window plan fill |
+| F1 f3 `/usr/bin/ssh` SHA256 | **filled at fill time** (`6a9e5573…`, from the 06:47Z fact); Phase 4 step 0 rechecks it | bootstrap `observer.ssh_sha256` (plan `ef005319…`) |
 | F3 pod rootfs manifest digest (`PM`) | Phase 3: expect `34a71569…`; any other digest is explained before `build` | `build`, T7 request |
 | F3a process observer record | Phase 4 step 1a; **pass required** for the NEW daemon `c7b89648…` | go/no-go before setup |
-| F11 Rocky PID and lstart | **fixed** from the 09:38Z facts (`40425`, `Sun Nov 22 17:19:43 2026` UTC; boot ID `9a3774b8-fcb1-471c-9b00-8a1bfb089f57` copied from the facts file) | native guard host profile, Phase 5 recheck |
+| F11 Rocky PID and lstart | **fixed** from the 06:47Z facts (`86754`, `Thu Nov 26 06:46:29 2026` UTC; boot ID `69aefe1f-db9f-48b3-aff4-86cc549b0cc8` copied from the facts file) | native guard host profile, Phase 5 recheck |
 | F21 swap | **No Phase 0b**: swap 0 at the facts; Phase 1 requires 0 used (else stop and ask Paul); Phase 6 requires swap unused | Phase 1, 5, 6 |
 | F24 `hfs_fdattr` (new) | **filled at fill time** in both plans (above); Phase 8's mountinfo rows and the batch fill check it at run time | Phase 8 mounts, batch fill, T1-T4, T9-T11 |
 
@@ -358,9 +410,9 @@ cases, all as expected.
   stopped. At the facts all were stopped and no k3s VM was listed. The
   sheet never stops or starts them: the orchestrator schedules the window
   with the iormesh session and tells it afterwards that f3 is free.
-- **Q6 memory.** The 09:38Z numbers are a record only. Phase 5's estimate,
+- **Q6 memory.** The 06:47Z numbers are a record only. Phase 5's estimate,
   the drain and the Phase 6 bar decide at run time.
-- **Q7 UEFI vars drift.** The record pins `9f4fca82…`. Any Rocky boot before
+- **Q7 UEFI vars drift.** The record pins `883a9566…`. Any Rocky boot before
   Phase 7 changes it, and `host.py setup` then refuses.
 - **Q8 Phase 1a.** Every D1-a so far unloaded both modules; a refusal stops
   before staging.
@@ -374,7 +426,7 @@ cases, all as expected.
   same pinned sections and drops the earlier fills' carried-over prose and
   per-run history (zq3-r20's Q13), which stay in the run sheet.
 - **Q12 the stock kernel.** Rocky's restored kernel at Phase 12 must be the
-  stock `5.14.0-741.24.1.el9_9`. The custom `6.1.190-hfs-xz3` is only ever
+  stock `5.14.0-741.27.1.el9_9`. The custom `6.1.190-hfs-xz3` is only ever
   a one-shot `next_entry` (Phase 3 never uses `--make-default`), and U2
   removes it. The sheet's Phase 3, 12 and Recovery lines say so.
 
@@ -394,3 +446,21 @@ changed among the Go sources, and no Go code changed in this commit.
 `bash -n` and shellcheck are clean for `build-stage.sh` and the `sh/`
 shell helpers. `session.sh` keeps its intentional word splitting of `$O`,
 loads only in bash, and its `hpin` and `okpin` pass. No code was changed.
+
+**2026-11-26 refill, all rerun after the maintenance reboot:**
+- **Phase 0 block** of the sheet: argv verify and `check-argv` pass,
+  `bootstrap.py check` passes, the synthetic batch check passes, the
+  workstation ssh is `d4c70b09…`, and `hpin`, `okpin` and the six
+  `sha256sum -c` pins are OK.
+- **Plan and template checks:** the controller and fd_attr refusals, the
+  guard argv equality, the pod negatives and the bootstrap fd_attr
+  negatives, all as before.
+- **Helper tests:** the n1-gate fixed-time tests (14, for 2026-11-26), the
+  guard budget and the signing watcher.
+- **Staging:** `build-stage.sh` and `verify-stage.sh` (deterministic, 35/35
+  hashes). Against 2026-11-25 only the argv record, volume-init, runtime
+  config and kernel plan changed.
+- **Sheet dry run:** `HARNESS-DONE lines=91 L=2`, 38 helper cases, and the
+  hfs_fdattr batch-fill refusal.
+- **Python suites:** retained9p, directlaunch, `tools/lab` and artifacts,
+  same counts, all OK.
