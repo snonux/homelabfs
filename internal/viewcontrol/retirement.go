@@ -3,10 +3,29 @@ package viewcontrol
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
+
+// ErrRetirementHeld is what Facts.CheckPhysical returns for a VIEW_RETIRE
+// while the domain still has an active physical or dirty owner (the
+// runtime's factsLedger.checkRetire: any active lease or open reservation
+// of the scope, whoever holds it). retire answers it BLOCKED, like its own
+// retirementBlocked clauses: nothing changes and the guest offers the same
+// range again later (hfs_view_retire records view->retire_blocked, re4).
+//
+// It wraps fsapi.WouldBlock, which this refusal was until task km4. The
+// transport retries WouldBlock in its pending ring and never answers the
+// cell (guestbridge recordExecuteFailure), and the holder of the other lease
+// usually outlives the guest's 30 s exchange: in zq3-r22 (R22-1) m0's
+// cleanup worker sent access child 1's VIEW_RETIRE while child 2's and the
+// creating process's observation leases were active, got FETCH AGAIN until
+// its deadline (-110), blocked the session, and the CREATE waiting for
+// session->retirement behind it failed ENOSPC after 33 s.
+var ErrRetirementHeld = fmt.Errorf("%w: retirement refused while the domain has an active owner", fsapi.WouldBlock)
 
 type retirement struct {
 	Anchor, Nonce string
@@ -24,8 +43,11 @@ func retirementKey(scope guestbridge.Context, r retirement) string {
 }
 
 // retire answers one VIEW_RETIRE: the protected receipt of an exact replay,
-// BLOCKED while any number in the range is not closed, or a new RETIRED
-// floor, which then recycles everything the floor retires (compact).
+// BLOCKED while any number in the range is not closed or the physical side
+// refuses with ErrRetirementHeld (km4), or a new RETIRED floor, which then
+// recycles everything the floor retires (compact). A BLOCKED answer is not
+// stored: it is exactly retirementReply's fallback, so CheckResponse
+// accepts it.
 //
 // Only the family's latest receipt is kept (family.Receipt). The guest
 // builds a family's next VIEW_RETIRE only from the previous one's RETIRED
@@ -53,16 +75,24 @@ func (c *Controller) retire(ctx context.Context, scope guestbridge.Context, raw 
 		return nil, err
 	}
 	if blocked {
-		return canonical(map[string]any{"status": "BLOCKED", "floor": f.Floor, "proof_hash": nil})
+		return blockedRetirement(f)
 	}
 	state, err := c.rawState()
 	if err != nil {
 		return nil, err
 	}
 	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_RETIRE", raw, state); err != nil {
+		if errors.Is(err, ErrRetirementHeld) {
+			return blockedRetirement(f)
+		}
 		return nil, err
 	}
 	return c.protectRetirement(scope, r, fk, receiptKey)
+}
+
+// blockedRetirement is the BLOCKED answer at family f's unchanged floor.
+func blockedRetirement(f family) (json.RawMessage, error) {
+	return canonical(map[string]any{"status": "BLOCKED", "floor": f.Floor, "proof_hash": nil})
 }
 
 // retirementBlocked reports whether the range floor+1..through cannot be
@@ -85,7 +115,8 @@ func (c *Controller) retire(ctx context.Context, scope guestbridge.Context, raw 
 //     only tickets it no longer references: a GRANTED acquisition ticket of
 //     an active or shared lease must not be recycled while a holder may
 //     still use it. The physical side (controlledruntime
-//     factsLedger.checkRetire) refuses even domain-wide for the same reason.
+//     factsLedger.checkRetire) refuses even domain-wide for the same reason;
+//     since km4 that refusal (ErrRetirementHeld) is answered BLOCKED too.
 //
 // A per-ticket rule could free answered releases sooner, but only together
 // with those tests, a matching facts check and a guest that re-sends a

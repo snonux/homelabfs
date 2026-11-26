@@ -699,7 +699,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,4105 @@
+@@ -0,0 +1,4148 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -4659,6 +4659,37 @@ new file mode 100644
 +}
 +EXPORT_SYMBOL_GPL(hfs_retire);
 +
++/* km4: hfs_retire, plus how many of session's requests it freed (*freed).
++ * The count compares nr_requests before and after, so a request admitted
++ * meanwhile hides one freed; it is a log diagnostic, not accounting.
++ */
++static int hfs_retire_counted(struct hfs_session *session, u32 *freed)
++{
++	u32 before = READ_ONCE(session->nr_requests), after;
++	int err = hfs_retire(session);
++
++	after = READ_ONCE(session->nr_requests);
++	*freed = before > after ? before - after : 0;
++	return err;
++}
++
++/* km4 (zq3-r22 R22-1): one rate-limited line per hfs_retire_shared round,
++ * from both of its callers (hfs_call_reserve, hfs_view_ticket_charge): the
++ * caller's own retirement (its errno, -EAGAIN for nothing retirable, and the
++ * requests it freed), how many other sessions of the provider were offered
++ * and how many of them retired how many requests, and what happens next.
++ * View tickets are not retired here (hfs_view_retire), so "freed" counts
++ * requests only.
++ */
++static void hfs_retire_shared_note(struct hfs_session *session, int own_err, u32 own,
++				   u32 offered, u32 others, u32 others_freed, int err)
++{
++	pr_info_ratelimited("9p-hfs: session %pUb retired under charge pressure: own retire %d freed %u requests, %u of %u other sessions freed %u; %s\n",
++			    &session->enrollment.session, own_err, own, others, offered,
++			    others_freed,
++			    err ? "nothing freed, the charge fails" : "retrying the charge once");
++}
++
 +/* 6m4 (zq3-r21 R21-1): retire this session's retirable requests and those
 + * of every other listed session of the same provider. The controlled
 + * provider's byte and slot partitions are global across its mounts, so the
@@ -4673,17 +4704,24 @@ new file mode 100644
 + * underneath. hfs_retire takes only the retired session's own retirement
 + * mutex and lock, never the caller's. A closing session is skipped. Nothing
 + * retirable anywhere leaves the caller's ENOSPC as it was.
++ *
++ * km4 (zq3-r22 R22-1): each round is logged (hfs_retire_shared_note), since
++ * r22's guest log could not show whether this path ran or what it freed.
++ * hfs_retire waits for the session's retirement mutex; in r22 m0's cleanup
++ * worker held it for a whole 30 s VIEW_RETIRE exchange that the host never
++ * answered, so the CREATE that came here returned ENOSPC after 33 s.
 + */
 +int hfs_retire_shared(struct hfs_session *session)
 +{
 +	struct hfs_session **sessions, *other;
 +	unsigned long flags;
-+	u32 count = 0, max = atomic_read(&hfs_active_sessions), i;
-+	int err = hfs_retire(session);
++	u32 count = 0, max = atomic_read(&hfs_active_sessions), i, own, freed, others = 0;
++	u32 others_freed = 0;
++	int own_err = hfs_retire_counted(session, &own), err = own_err;
 +
 +	sessions = max ? kmalloc_array(max, sizeof(*sessions), GFP_KERNEL) : NULL;
 +	if (!sessions)
-+		return err;
++		goto note;
 +	spin_lock_irqsave(&hfs_sessions_lock, flags);
 +	list_for_each_entry(other, &hfs_sessions, global) {
 +		if (count == max)
@@ -4696,12 +4734,17 @@ new file mode 100644
 +	}
 +	spin_unlock_irqrestore(&hfs_sessions_lock, flags);
 +	for (i = 0; i < count; i++) {
-+		if (!hfs_retire(sessions[i]))
++		if (!hfs_retire_counted(sessions[i], &freed)) {
 +			err = 0;
++			others++;
++			others_freed += freed;
++		}
 +		if (atomic_dec_and_test(&sessions[i]->budget_users))
 +			wake_up_all(&hfs_budget_wait);
 +	}
 +	kfree(sessions);
++note:
++	hfs_retire_shared_note(session, own_err, own, count, others, others_freed, err);
 +	return err;
 +}
 +

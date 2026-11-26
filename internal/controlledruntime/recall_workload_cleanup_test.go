@@ -219,8 +219,10 @@ func (m *recallModel) retireViews(mount *modelMount, phase *modelPhase, owner st
 
 // retireWait sends one RETIRE / VIEW_RETIRE. Any reply ends it: RETIRED
 // advances the floor (advance), BLOCKED leaves it (the guest tries again at
-// its next cleanup). No reply (Facts.CheckPhysical WouldBlock retried in the
-// control worker's ring) expires it at the window.
+// its next cleanup). No reply (a WouldBlock retried in the control worker's
+// ring) expires it at the window. Facts.CheckPhysical's domain-wide refusal
+// of a VIEW_RETIRE was such a WouldBlock until km4 (zq3-r22 R22-1); it is
+// answered BLOCKED now (TestZQ3ChildRetireBesideHeldObservation).
 func (m *recallModel) retireWait(mount *modelMount, phase *modelPhase, label, op string, request map[string]any, advance func(uint64)) *guestWait {
 	w := &guestWait{label: label, phase: phase, mount: mount.index, kind: "retire", terminal: func(string) bool { return true }}
 	phase.waits = append(phase.waits, w)

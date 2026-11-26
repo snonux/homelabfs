@@ -96,7 +96,7 @@ The guest kernel log at the same moment (the full `dmesg` holds no other hfs lin
 
 **Host side (read-only):**
 - The failure OBSERVE (seq 5, the yf4 direct form) was OBSERVED, SERVING and complete, with no fence.
-- m0's provider ledger: Allocated 46, Retired 39, Entries 7, Open 0. Claims 40-46 are TERMINAL and unretired: DESCRIPTION_RELEASE, PROCESS_EXIT, GETATTR, FORGET, LOOKUP, GETATTR and PROCESS_EXIT (the last three most likely access child 2's). **There is no CREATE claim for `group-tail`: the call never reached the host.**
+- m0's provider ledger: Allocated 46, Retired 39, Entries 7, Open 0. Claims 40-46 are TERMINAL and unretired: DESCRIPTION_RELEASE, PROCESS_EXIT, GETATTR, FORGET, LOOKUP, GETATTR and PROCESS_EXIT (km4 decode: 40, 41 and 43 are access child 1's, 42 and 44-46 access child 2's). **There is no CREATE claim for `group-tail`: the call never reached the host.**
 - m1's: Allocated 12, Retired 12, Open 0.
 - The view controller had Leases 6, Reservations 0, Tickets 14, no recall, and `Matches` true (zq3-r21: Tickets 10).
 - The transport had 10 cells: 3 ordinary and 7 control.
@@ -108,15 +108,50 @@ The guest kernel log at the same moment (the full `dmesg` holds no other hfs lin
 - **m0's session blocked on a `VIEW_RETIRE` that timed out (`-110`, the oc4 30 s reply bound).** The block line was logged about 30 ms after the `create` returned. 33.26 s is one 30 s reply wait plus about 3 s.
 - **m1 blocked on its `PROCESS_EXIT` with `-28`** 84 ms later: the same pattern as zq3-r21's m1 (6m4's known limit, "a retirement returns only its own lane's bytes").
 
-**Likely sequence (a hypothesis until the owner snapshots are decoded):**
-1. The `create`'s charge failed with ENOSPC.
-2. 6m4's `hfs_retire_shared` started a retirement round, and its view-ticket retirement sent a `VIEW_RETIRE` on the control lane.
-3. That exchange got no reply within 30 s, so the guest blocked m0 as an uncertain control result.
-4. The single retry then failed ENOSPC again.
+**Root cause (task km4, proven from the owner snapshots and `f3-evidence.tar`).** The earlier "likely sequence" was wrong. 6m4's `hfs_retire_shared` sends no `VIEW_RETIRE`. The `VIEW_RETIRE` was access child 1's, sent by m0's cleanup worker, and the host never answered it. The ledgers were decoded offline: the bbolt files with a read-only dumper, and the exporter's forwarding ledger by its JSON records.
 
-Open questions:
-- Why the `VIEW_RETIRE` went unanswered: whether it reached the exporter or the host at all, and whether a control-lane slot, the control byte partition or the ordinary byte partition was full;
-- which lane's budget the `create` ran out of.
+1. **Child 1's retirement went out on m0's cleanup worker.**
+   - Child 1 is uid 41001, groups `[42001,42002,42003]`, process `36bfd46c…`. It read `group-secret` under its own DOMAIN READ observation leases and was reaped at guest 1293.57 s.
+   - m0's cleanup worker released those leases (all three are inactive in the snapshot). At the end of that cleanup packet it ran `hfs_retire` and `hfs_view_retire` (patch 0004, `hfs_mmap.c`).
+   - The `VIEW_RETIRE` (guest cell 1229, forwarded as host cell 16030) offered child 1's acquisition family `8df58e74…` through ticket 5, with child 1's credentials.
+2. **The view controller would have retired it.** In the snapshot that family has High 5 and Floor 0. Its tickets 1-5 are all `GRANTED` (terminal), with exactly the five ids the `VIEW_RETIRE` carried. No recall ran, child 1's leases (credential hash `08ecfd37…`) were inactive and there were no reservations. So `retirementBlocked` was false.
+3. **`Facts.CheckPhysical` refused it with `WouldBlock`.** Its `checkRetire` (`internal/controlledruntime/facts.go`) refuses a retirement while *any* lease of the scope is active. Three m0 leases were active:
+   - child 2's two (credential hash `936bbd51…`, process `d0033911…`);
+   - the T1 process's (`5ac653ce…`, root, `VIEW_ACQUIRE` #16 at guest cell 1250).
+4. **The transport retried that `WouldBlock` and never answered the cell.**
+   - `recordExecuteFailure` keeps a WouldBlock cell pending and retries it, and `Read` answers `WouldBlock` until a response exists.
+   - Both owner snapshots (taken at the failure OBSERVE, about a minute after the block) show host cell 16030 still `executing`, with no response. The exporter's forwarding ledger holds the delegated request and no reply.
+   - So every guest FETCH got AGAIN, which is not an ERROR (hence `exporter ERROR -`), until one of the guest's 30 s exchange bounds expired. That gave `-110`, `transport_failed`, and m0 blocked as an uncertain control result. The cleanup worker stopped with it (`view control worker stopped, error -112`).
+5. **The cleanup worker deadlocked itself.** Child 2's leases kept the retirement refused. Only m0's cleanup worker could release them, but it is single-threaded and was inside that `VIEW_RETIRE`. They are still active in the snapshot.
+6. **The 33 s CREATE.**
+   - `create-exclusive(group-tail)` started at 1298.59 s. Its lookup's observation lease (`VIEW_ACQUIRE` #16) was granted.
+   - Then the CREATE call's charge failed ENOSPC, and 6m4's `hfs_retire_shared` called `hfs_retire(m0)`. `hfs_retire` takes `session->retirement`, which `hfs_view_retire` holds for its whole round, so the CREATE waited until the `VIEW_RETIRE` failed.
+   - `hfs_retire` then sent m0's `RETIRE` through claim 41 (guest cell 1280, child 1's credentials, the oldest run of retirable claims). The exporter recorded its SEND but had not forwarded it: the transport's m0 guest high-water is 1277. The session was already `transport_failed`, so the guest gave up at its first retry with `-EHOSTDOWN`.
+   - m1 had nothing to retire, so `hfs_retire_shared` failed, nothing was retried, and the CREATE returned its ENOSPC at 1331.85 s.
+7. **m1's `PROCESS_EXIT (-28)`, 84 ms later, comes from the same cause.** m1 had nothing to retire and m0 was now blocked, so no retirement could free bytes.
+8. **The final `PERMISSION`.** In `f3-evidence.tar`, taken after the guard's SIGTERM, cell 16030 is `blocked` with `BlockedError` `PERMISSION`. That is the last retry after the guard stopped the runtime: both owner snapshots, taken before it, show the cell `executing`.
+
+**Why claims 40-46 stayed unretired.**
+- Claims 40, 41 and 43 (`DESCRIPTION_RELEASE`, `PROCESS_EXIT`, `FORGET`) are child 1's. Claims 42 and 44-46 (`GETATTR`, `LOOKUP`, `GETATTR`, `PROCESS_EXIT`) are child 2's.
+- `hfs_retire` retires only the oldest run of claims with one set of credentials. So one round could free at most claims 40-41, and that round's `RETIRE` was the one at cell 1280 that never reached the host.
+- Before the CREATE, the guest retires claims only at the end of a cleanup packet or under charge pressure.
+- The snapshots do not show why the cleanup packet's own `hfs_retire`, which ran just before the `VIEW_RETIRE`, did not retire claims 40-41. Most likely they were not yet terminal and adopted: child 1's `PROCESS_EXIT` (opened one second after its `DESCRIPTION_RELEASE`) comes from its exit work.
+
+**Which lane the CREATE ran short of is not in the host evidence**, because the guest budget is not recorded. An estimate with 6m4's sizes points at the 512 MiB ordinary partition. Before the CREATE's own 34.9 MiB, m0's unretired owners held about 474 MiB:
+- 7 retained requests at about 34.9 MiB each: 244 MiB;
+- 9 unretired acquisition tickets (child 1's 5, child 2's 3 and #16) at about 25.5 MiB each: 230 MiB.
+
+**Timing caveat.**
+- Guest cell numbers are allocated in order. The `VIEW_RETIRE` (cell 1229) came before child 2's `PROCESS_EXIT`: claim 46, opened at host epoch 1795704512, about guest 1298.6 s. So it was first sent between about 1293.6 s and 1299.5 s, and the block at 1331.88 s came 32-38 s after that send, not exactly 30 s.
+- The guest has two 30 s bounds: the exchange deadline over FETCH AGAIN, and the 9p reply wait of one FETCH. The evidence cannot tell which one fired, or whether a late FETCH reply delayed the deadline check.
+- Either way, the exchange had no host answer to wait for.
+
+**Fix (km4, in the host daemon).**
+- `checkRetire` now returns `viewcontrol.ErrRetirementHeld`, which still wraps `fsapi.WouldBlock`.
+- `Controller.retire` answers it `BLOCKED` at the unchanged floor, as it answers its own `retirementBlocked` clauses. The guest records a BLOCKED `VIEW_RETIRE` (`view->retire_blocked`) and offers it again later (re4).
+- The domain-wide rule itself is unchanged.
+- The guest now logs every `hfs_retire_shared` round, rate-limited: its own retire result and the requests it freed, the other sessions offered and what they freed, and whether the charge is retried.
+- Details: [linux9p README, km4](../../../../tools/integration/linux9p/README.md#a-refused-view_retire-is-answered-blocked-km4).
 
 `credentials-owner-live.tar` and `credentials-owner-after.tar` (BoltDB ledgers for the controller, both providers and the transport) and `f3-evidence.tar` hold the host state. The full guest `dmesg` is in `p11-guest-dmesg.txt`.
 
@@ -172,10 +207,11 @@ Ruled out:
 
 ## Follow-up
 
-- **R22-1:** decode the owner snapshots and the guest budget offline. The questions are why m0's `VIEW_RETIRE` went unanswered for 30 s and which lane's bytes the `create` lacked.
-  - The 6m4 retirement round did not retire any of m0's 7 retirable claims on the host.
-  - 6m4 does not log its retire-and-retry path, so the guest log cannot show whether it ran. A log line there would help the next run.
-  - m1's `PROCESS_EXIT (-28)` repeats 6m4's known limit.
+- **R22-1:** root cause found and fixed in km4 (above).
+  - Child 1's `VIEW_RETIRE` was refused by the host's domain-wide `checkRetire` with a `WouldBlock` that the transport never answers.
+  - km4 answers that refusal `BLOCKED`, and the guest now logs each 6m4 retire-and-retry round.
+  - The r23 candidate needs the daemon rebuilt for the fix, and the guest kernel for the log line. The exporter is unchanged.
+  - Still open: which lane the CREATE lacked (the guest budget is not recorded), and whether the next run's log shows the retry succeeding.
 - **R22-2:** the operator's Phase 8 wait (above).
 - **Validated again by this run:**
   - sj4 (R20-1);
