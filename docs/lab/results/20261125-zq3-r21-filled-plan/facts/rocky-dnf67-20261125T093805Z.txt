@@ -1,0 +1,36 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+Packages Altered:
+    Upgrade  openssh-9.9p1-17.el9_9.rocky.0.1.x86_64         @baseos
+    Upgraded openssh-9.9p1-16.el9_9.rocky.0.1.x86_64         @@System
+    Upgrade  openssh-clients-9.9p1-17.el9_9.rocky.0.1.x86_64 @baseos
+    Upgraded openssh-clients-9.9p1-16.el9_9.rocky.0.1.x86_64 @@System
+    Upgrade  openssh-server-9.9p1-17.el9_9.rocky.0.1.x86_64  @baseos
+    Upgraded openssh-server-9.9p1-16.el9_9.rocky.0.1.x86_64  @@System
+    Upgrade  flatpak-1.12.9-6.el9_9.6.x86_64                 @appstream
+    Upgraded flatpak-1.12.9-6.el9_9.5.x86_64                 @@System
+    Upgrade  flatpak-selinux-1.12.9-6.el9_9.6.noarch         @appstream
+    Upgraded flatpak-selinux-1.12.9-6.el9_9.5.noarch         @@System
+    Upgrade  flatpak-session-helper-1.12.9-6.el9_9.6.x86_64  @appstream
+    Upgraded flatpak-session-helper-1.12.9-6.el9_9.5.x86_64  @@System
+    Upgrade  golang-1.27.4-1.el9_9.x86_64                    @appstream
+    Upgraded golang-1.27.3-1.el9_9.x86_64                    @@System
+    Upgrade  golang-bin-1.27.4-1.el9_9.x86_64                @appstream
+    Upgraded golang-bin-1.27.3-1.el9_9.x86_64                @@System
+    Upgrade  golang-race-1.27.4-1.el9_9.x86_64               @appstream
+    Upgraded golang-race-1.27.3-1.el9_9.x86_64               @@System
+    Upgrade  golang-src-1.27.4-1.el9_9.noarch                @appstream
+    Upgraded golang-src-1.27.3-1.el9_9.noarch                @@System
+    Upgrade  libgsf-1.14.47-5.el9_9.1.x86_64                 @appstream
+    Upgraded libgsf-1.14.47-5.el9.x86_64                     @@System
+    Upgrade  podman-6:5.8.5-5.el9_9.x86_64                   @appstream
+    Upgraded podman-6:5.8.5-3.el9_9.x86_64                   @@System
+    Upgrade  podman-docker-6:5.8.5-5.el9_9.noarch            @appstream
+    Upgraded podman-docker-6:5.8.5-3.el9_9.noarch            @@System
+    Upgrade  xdg-desktop-portal-1.12.6-1.el9_9.1.x86_64      @appstream
+    Upgraded xdg-desktop-portal-1.12.6-1.el9.x86_64          @@System
+== needs-restarting
+No core libraries or services have been updated since boot-up.
+Reboot should not be necessary.
+rc=0
