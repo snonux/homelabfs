@@ -1,0 +1,6 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+ 22:15:25 up  5:23,  0 users,  load average: 0.24, 0.05, 0.02
+19434.32 77612.92
+ls: cannot access '/.autorelabel': No such file or directory
