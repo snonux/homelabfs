@@ -141,6 +141,13 @@ Fedora 45: binutils 2.47 changed only `CONFIG_AS_VERSION` and
 modules and `abi-negative.json` again came out byte-identical. The daemon
 was built with go1.27.4 (`daemon.py` `GO_RELEASE`, re-pinned from go1.26.10
 in `3081d31`) and the exporter rebuilt on f3 for s64 and hh4 (`8cadae40…`).
+The r22 rebuild for zq3-r22 (candidate `2c85b230…`,
+[evidence](evidence/xz3-20261126-r22/README.md)) kept that config; its 6m4
+patches 0003/0004 changed the image (build ID `c34dc6fb…`) and the CRCs of
+the same nine hfs exports. The five modules and `abi-negative.json` again
+came out byte-identical. It reused the `3081d31` daemon `c7b89648…` and the
+exporter `8cadae40…` byte for byte, so its repository baseline is `3081d31`
+with `inputs/repository-changes.patch` (the r16 method).
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
@@ -321,7 +328,9 @@ The r21 rebuild for zq3-r21 at `91b9ee1` rebuilt the exporter on f3 under
 [r21 evidence](evidence/xz3-20261123-r21/README.md)). The second r21
 rebuild at `3081d31` rebuilt it again for s64 `_args` and the hh4 ABANDON
 forwarder in `hfs9p.c` (`8cadae40…`,
-[evidence](evidence/xz3-20261125-r21/README.md)).
+[evidence](evidence/xz3-20261125-r21/README.md)). The r22 rebuild at
+`de9df35` reused that exporter through its records
+([r22 evidence](evidence/xz3-20261126-r22/README.md)).
 Within one sample the walk can still
 miss a file renamed into a directory it has already passed; the guard
 samples repeatedly.

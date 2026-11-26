@@ -1,5 +1,17 @@
 # xz3 second r21 rebuild (2026-11-24): s64 hfs_fdattr, hh4 ABANDON and the Fedora 45 toolchain
 
+**Superseded on 2026-11-26** by the [r22 rebuild](../xz3-20261126-r22/README.md)
+(`2c85b230…`, source `de9df35`) for zq3-r22. zq3-r21 ran this candidate on
+2026-11-26 and T1 failed with R21-1. Its guest kernel `bd4fa753…` charged a
+request's completion package and a view ticket's package without retiring
+first, and it retired only the caller's own session, so `fchmod` failed with
+ENOSPC and both sessions blocked. 6m4 fixed that in the guest kernel only.
+r22 rebuilt the kernel and reused this candidate's daemon `c7b89648…`,
+window artifacts and exporter `8cadae40…` byte for byte. The tooling now
+refuses this manifest as superseded, and `FD_ATTR` holds `2c85b230…`
+instead. This manifest still passes `package.py check` and `admit.py` under
+the `de9df35` tooling.
+
 The candidate was built and admitted on 2026-11-24. The `20261125` in its
 directory and evidence names is the planned zq3-r21 run day, chosen in
 advance as the earlier rebuilds did, because pins and the run plan

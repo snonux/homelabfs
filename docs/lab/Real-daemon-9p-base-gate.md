@@ -69,9 +69,10 @@ and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The r17 dae
 `c04c519f…` (zq3-r20 candidate `b37bcb06…`) passed it in zq3-r20
 ([record](results/20261122-zq3-r20/README.md)). The first r21 daemon
 `013515a8…` (candidate `1428d4db…`) never ran. The current daemon
-`c7b89648…` (second r21 rebuild for zq3-r21, candidate `f21450ec…`, built
-with go1.27.4 on Fedora 45) is new bytes and has not been
-checked yet; every run repeats the check. f3-host descriptor execution still awaits the
+`c7b89648…` (built with go1.27.4 on Fedora 45 for the second r21 rebuild,
+candidate `f21450ec…`, and reused byte for byte by the r22 rebuild,
+candidate `2c85b230…`) passed it in zq3-r21
+([record](results/20261126-zq3-r21/README.md)); every run repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
@@ -181,14 +182,26 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (second r21 rebuild for zq3-r21, built 2026-11-24
-for the run planned on 2026-11-25) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261125-r21/package`, manifest SHA256
-`f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106`, assembled from source checkout
-and repository baseline `3081d31` (main `a670592` plus the Fedora 45 Go
-re-pin); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261125-r21/README.md).
-It is the first candidate built on Fedora 45 (go1.27.4, binutils 2.47,
+The current xz3 candidate (r22 rebuild for zq3-r22, built 2026-11-26) is
+retained at `/home/paul/tmp/claude/hfs-xz3-20261126-r22/package`, manifest
+SHA256 `2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e`,
+assembled from source checkout `de9df35` with repository baseline `3081d31`
+(the reused daemon's build revision; `inputs/repository-changes.patch`
+holds the 6m4 diff); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261126-r22/README.md).
+Only the guest kernel was rebuilt, for 6m4 (call and view-ticket charges
+reserve all parts together and retire across every session of the provider
+before one retry; zq3-r21 R21-1): `bzImage` `f51aff35…`, `vmlinux`
+`95a7e7fe…`, GNU build ID `c34dc6fb…`, `System.map` `c710fd4c…`, `config`
+`692ed3fa…` unchanged; two builds at the same O path were identical, the
+five modules came out byte-identical to `f21450ec…`, and `Module.symvers`
+changed only in hfs export CRCs. The CGO daemon `c7b89648…`, the window
+artifacts and the native exporter `8cadae40…` are reused byte for byte from
+the second r21 rebuild (`f21450ec…`, source and repository baseline
+`3081d31`;
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261125-r21/README.md)),
+which zq3-r21 ran and which is now refused as superseded. That candidate
+was the first built on Fedora 45 (go1.27.4, binutils 2.47,
 clang 23) and the first in `controller.FD_ATTR`. The guest kernel was
 rebuilt for the guest merges since `91b9ee1` (patches 0002-0005: s64
 `hfs_fdattr`, hh4 ABANDON, dh4, 5f4, kn1 and wj4 item 1): `bzImage`
@@ -452,7 +465,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `f21450ec…`,
+The concrete phased proposal for one disposable run with candidate `2c85b230…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated
