@@ -6,6 +6,12 @@
 [r21 candidate](../../../../tools/integration/artifacts/evidence/xz3-20261125-r21/README.md) ·
 [`hfs_fdattr`](../../../../tools/lab/retained9p/README.md#hfs_fdattr-mounts-bl4-s64)
 
+**2026-11-26 refresh: STOP.** Rocky's dnf #68 installed the stock kernel
+`741.27.1` as the grub default while Rocky still runs `741.24.1` (the N1
+kernel split), so Phase 1 and Phase 3 refuse. These inputs need an approved
+maintenance reboot and a refill first; see
+[ADDENDUM-20261126.md](ADDENDUM-20261126.md).
+
 These are the exact run inputs for `zq3-r21`, the twenty-first attempt of
 zq3: Phases 0 and 1 of the [run plan](../../zq3-run-plan.md) only. They were
 generated on the workstation with the committed tools at `main` `95f6d84`
