@@ -13,14 +13,19 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the second xz3 r21 rebuild for
-zq3-r21 (built 2026-11-24 for the run planned on 2026-11-25), manifest `f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106`
-(source and repository baseline `3081d31`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261125-r21/README.md)).
-The kernel, the daemon and the exporter were rebuilt, on the Fedora 45
-toolchain (go1.27.4, binutils 2.47, clang 23). It is also the one `FD_ATTR`
-candidate (see [`hfs_fdattr`](#hfs_fdattr-mounts-bl4-s64)). The kernel
-(build ID `bd4fa753…`, c64 recipe, so SELinux is an active LSM) adds s64
+**The controller pins exactly one candidate:** the xz3 r22 rebuild for
+zq3-r22 (built 2026-11-26), manifest `2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e`
+(source `de9df35`, repository baseline `3081d31`, the reused daemon's build
+revision; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261126-r22/README.md)).
+Only the kernel was rebuilt (build ID `c34dc6fb…`, Fedora 45 binutils): it
+adds 6m4 (call and view-ticket charges reserve all parts together and, on
+ENOSPC, retire every session of the provider before one retry; zq3-r21
+R21-1) to the kernel of the second r21 rebuild (`f21450ec…`, now
+superseded). The daemon `c7b89648…` (go1.27.4) and the exporter
+`8cadae40…` are reused byte for byte from `f21450ec…`. It is also the one
+`FD_ATTR` candidate (see [`hfs_fdattr`](#hfs_fdattr-mounts-bl4-s64)). The
+`f21450ec…` kernel (build ID `bd4fa753…`, c64 recipe, so SELinux is an active LSM) adds s64
 (GETATTR/SETATTR through the open description behind `hfs_fdattr`), hh4
 (a blocked session ABANDONs its stranded never-prepared claims), dh4, 5f4,
 kn1 and wj4 item 1 (the mmapped mark ends, so the xf4 advance can fire
@@ -249,9 +254,10 @@ whose guest kernel, lib9p exporter and daemon all carry s64 may mount with
 it: with a pre-s64 exporter or daemon a described call on the controlled
 session is a failed ALLOCATE that costs the session. `controller.py`
 `FD_ATTR` lists those candidates (a subset of `ADMITTED`). It holds the
-second r21 rebuild `f21450ec…`, whose guest kernel, exporter and daemon all
-carry s64; every superseded candidate, the first r21 rebuild `1428d4db…`
-included, predates s64 and must never be added.
+r22 rebuild `2c85b230…`, whose guest kernel, exporter and daemon all carry
+s64. The superseded second r21 rebuild `f21450ec…` also carried s64 but is
+refused as superseded (R21-1); every older superseded candidate, the first
+r21 rebuild `1428d4db…` included, predates s64 and must never be added.
 
 The option is never implied by the tooling version. A plan asks for it and
 the candidate pin decides whether that is allowed, so replaying or reusing
@@ -876,7 +882,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 f21450ec… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 2c85b230… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

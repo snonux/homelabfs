@@ -301,6 +301,19 @@ with `hfs_fdattr`. The laptop had moved to Fedora 45 that day, so it is also
 the first package built with the newer compilers (Go 1.27.4 instead of
 1.26.10); the daemon must again pass the f3 self-check.
 
+zq3-r21 ran that package on 2026-11-26. The daemon passed the f3
+self-check, and both mounts came up with `hfs_fdattr`. The first test, T1,
+then failed: the guest ran out of its shared byte budget (ENOSPC). One
+mount still held finished requests that could have been handed back, but
+the guest only ever cleaned up the session that was asking, and it charged
+the bigger reply buffers without cleaning up first. 6m4 fixed this in the
+guest kernel: it now cleans up across all mounts before it gives up, then
+retries once. Only the kernel changed, so on 2026-11-26 the package was
+rebuilt for zq3-r22 with just a new kernel (`2c85b230…`, kernel build ID
+`c34dc6fb…`). The daemon (`c7b89648…`, which already passed the self-check)
+and bhyve (`8cadae40…`) are the same files as before. It is the package now
+allowed to mount with `hfs_fdattr`.
+
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
 written record of every step, not by a fully automatic runner. Right before the

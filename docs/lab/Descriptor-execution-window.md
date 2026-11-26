@@ -237,7 +237,9 @@ were rebuilt from `3081d31` for the second r21 rebuild for zq3-r21
 (`f21450ec…`, daemon vj4, dh4, s64 host and hh4 host) on the Fedora 45
 toolchain (go1.27.4, clang 23): the helper source is unchanged, but its code
 changed with the compiler (stripped `7872b1b4…`, `07c9f5a1…` for every
-Fedora 44 build).
+Fedora 44 build). The r22 rebuild for zq3-r22 (`2c85b230…`, 2026-11-26)
+rebuilt only the guest kernel (6m4) and reused that daemon, so these
+artifacts and their pins are unchanged.
 Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
