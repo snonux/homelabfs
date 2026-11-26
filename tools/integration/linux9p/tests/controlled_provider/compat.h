@@ -20,11 +20,15 @@ static inline void sort(void *base,size_t count,size_t size,
    (void)swap;qsort(base,count,size,compare);
 }
 struct mutex { pthread_mutex_t native; };
+/* Declared before the session struct: since 6m4 it holds an atomic_t
+ * (budget_users, hfs_retire_shared's pins). The admission/artifact open
+ * counters below use the same type.
+ */
+typedef atomic_int atomic_t;
 #include "session_struct.inc"
 #define DEFINE_MUTEX(name) struct mutex name = { PTHREAD_MUTEX_INITIALIZER }
 static inline void mutex_lock(struct mutex *m) { assert(!pthread_mutex_lock(&m->native)); }
 static inline void mutex_unlock(struct mutex *m) { assert(!pthread_mutex_unlock(&m->native)); }
-typedef atomic_int atomic_t;
 #define ATOMIC_INIT(n) ATOMIC_VAR_INIT(n)
 static inline int atomic_inc_return(atomic_t *n) { return atomic_fetch_add(n,1)+1; }
 static inline void atomic_dec(atomic_t *n) { atomic_fetch_sub(n,1); }

@@ -320,10 +320,13 @@ for declaration in ['enum hfs_view_scope {', 'struct hfs_enrollment {']:
     end = declarations.index('\n};', start)+3
     parts.append(declarations[start:end])
 (out/'enrollment_struct.inc').write_text('\n'.join(parts)+'\n')
-# The session embeds an x84 allocation waitqueue and the terminal ack cells
-# (struct hfs_terminal_ack); both are opaque to the provider tests.
+# The session embeds an x84 allocation waitqueue, the terminal ack cells
+# (struct hfs_terminal_ack) and, since hh4, abandon_work (a work_struct);
+# all are opaque to the provider tests, which never touch a session. Its
+# 6m4 budget_users atomic_t comes from compat.h.
 session_parts = ['typedef pthread_mutex_t spinlock_t;',
                  'typedef int wait_queue_head_t;',
+                 'struct work_struct { void (*func)(struct work_struct *); };',
                  'struct list_head { struct list_head *next, *prev; };']
 for declaration in ['struct hfs_cell {', 'struct hfs_terminal_ack {', 'struct hfs_session {']:
     start = declarations.index(declaration)

@@ -192,7 +192,17 @@ python3 tools/integration/linux9p/tests/transport/run.py \
   --source /owned/run/linux --output /owned/run/transport-check --sanitize
 python3 tools/integration/linux9p/tests/setattr/run.py \
   --source /owned/run/linux --output /owned/run/setattr-check --sanitize
+python3 tools/integration/linux9p/tests/controlled_provider/run.py \
+  --source /owned/run/linux --output /owned/run/provider-check \
+  --budget-root /owned/run --kernel-headers /owned/run/object-check \
+  --fixture internal/controlledruntime/testdata/guest-artifacts.json
 ```
+
+Run `controlled_provider` for every guest-patch change, next to the other
+harnesses a change touches: it extracts `struct hfs_session` verbatim from
+`hfs.h`, so a new session field of a kernel type it does not shim breaks its
+compile (hh4's `abandon_work` and 6m4's `atomic_t` went unnoticed until
+`im4`). It needs the `--module-objects` tree above for its kernel TU checks.
 
 Omit `--archive` to fetch only the pinned primary archive. Existing destinations
 and build outputs are refused. Preparation checks lengths/digests, extraction
@@ -2943,6 +2953,10 @@ Proof:
 - **Not run:**
   - the guest kernel compile (the r22 candidate build does it);
   - `controlled_provider`, `mapped`.
+
+`im4` later repaired `controlled_provider` (it had not compiled since hh4:
+`abandon_work` incomplete, and since 6m4: `atomic_t` unknown) in its own
+`compat.h`/`build.py` only; it passes on the 6m4 series.
 
 Not covered: unretired view tickets are still offered for retirement only
 from recall cleanup and BLOCKED re-sends. While no recall runs (xf4
