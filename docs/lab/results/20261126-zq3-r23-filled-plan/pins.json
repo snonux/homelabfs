@@ -219,9 +219,9 @@
   "dryrun/rockystub.py": "3d6cf53e9fe6b55df708dc6fb700e313e1ab2b19447ad3de3cf2827e47ab1cc7",
   "make-pins.py": "217c877fb004aaa74c008899eba8097838ee456ccabc765eaaa96f4003734492",
   "make-spec.py": "dccd6123e2303cfd6ff01003ce5e9dbb115da6d12b09b38e2745be342db5e8d7",
-  "session.sh": "ed65bbf4a03298def1dd7ba6f1901d0e1545d434b7b4d6f0149ab74be085ebc5",
+  "session.sh": "3e92efb96e05bc29959b8a2021bda161001af407b5b127e6faa3ef8889d6d56b",
   "sh/guard-budget.py": "9285966bb921b9fe3f4cc154a1de7ff8d79fe9ce98ae41962866c0d51084d0cb",
-  "sh/n1-gate.py": "710b4ae21ee85ee90716fbe0762d6e0971ffbeebc1baec8296caeb5c6bcf4b82",
+  "sh/n1-gate.py": "c354f923a9157a81551226513980506d1367949c28bc56ee7a9a5747f888309d",
   "sh/p1-f3.sh": "890b1def8c0030b5095e7333ddbc41c4857b19f9216d86325070509c0bdfb1db",
   "sh/p10-admission.py": "0c5f5a99cbf52a6379be9fd3ec0d496e69b68f6ffa8622232fb3e8f0c4cc379f",
   "sh/p10-argv.py": "901a7079fa6a2b84852a979f729953f2d3acb8505e2751ee400942df5823524a",
@@ -328,6 +328,35 @@
    "time_zone": "Europe/Sofia (EET, +0200), synchronized"
   },
   "rocky_uptime": "5:23 at 20:15Z (zq3-r22's Phase 12 start 14:51Z)",
+  "run_day_refresh": {
+   "classification": "record refresh: new dnf transaction #69, nothing pinned changed",
+   "collected_utc": "20261126T225644Z (run day 2026-11-27 EET; read-only, pinned host keys, the fill collector with the newest dnf transaction instead of #68 and REFRESH-STAMP instead of STAMP)",
+   "dnf": "stamp 2026-11-27 (00:55:07 EET); newest transaction #69 of 2026-11-27 00:55, 2 packages: rsync-3.2.7-4.el9_9, libgs-9.54.0-20.el9_9.1; needs-restarting -r clean",
+   "f3_arc_bytes": 9036490376,
+   "f3_mem_pages": {
+    "active": 106565,
+    "free": 968372,
+    "inactive": 417410,
+    "pagesize": 4096,
+    "physmem": 16879837184,
+    "wire": 2524317
+   },
+   "f3_vms": "rocky Running (50982); freebsd, iom1, iom2, iom3, hfs-test0..2 Stopped; /dev/vmm holds only rocky",
+   "files_sha256": {
+    "f3-launch-facts-20261126T225644Z.json": "c61ccc42b0178439245ca91b8f99797fb6893e562da40f88ca2a8097c9ab7fe9",
+    "f3-net-mods-20261126T225644Z.txt": "7e5504941f49036ce8b4b02b9ef3c096eb1ad072b7fd2145c00202033d9b2058",
+    "f3-phase1-20261126T225644Z.txt": "dc71688087039f065e03fc457c8c7485913ed6ac4d0919d17f6a19c36785fe57",
+    "f3-usr-bin-ssh-20261126T225644Z.sha256": "49f48f61c619888080a6ed3ec75e34dd4b1eafe427e674a1556971ab94e3011b",
+    "rocky-dnf69-20261126T225644Z.txt": "ace5db09d07e0f64947e86a7fbe3e5a3755ad8c08c686c4485917ea8cdaee338",
+    "rocky-grub-20261126T225644Z.txt": "80e00a75c62abbd4010d6845583505751d6410ab24678d793fdea6561623886c",
+    "rocky-phase1-20261126T225644Z.txt": "e1e5b52ae253a724a948bc582472e412981ed565731f8a269bd816fe7de862d9",
+    "rocky-pod-runtime-20261126T225644Z.txt": "57bba75a84e4ebc12f973f32f374a1995f05df654e4bda441ac6d3f516c907f7",
+    "rocky-upgrade-20261126T225644Z.txt": "d11c7e13f0a3a75e0493b1ffeb65f9163e5717092b226357c9d61482d6351b7b",
+    "rocky-uptime-20261126T225644Z.txt": "a73a3d28d598f3f6173c23529e79210aae5a67cc2c4618a0aa6f0291eab14938"
+   },
+   "refilled": "sh/n1-gate.py FACTS_TOP #69 (c354f923), its hpin in session.sh, session.sh (3e92efb9) in the Phase 0 list and fill_helpers",
+   "unchanged": "Rocky PID 50982, lstart, boot ID 99de7fb2-c8e3-4b60-afef-7b11e77b4142, running kernel 5.14.0-741.27.1.el9_9 = grub default = saved_entry, next_entry empty, Enforcing, no /.autorelabel, python3.9, authorized_keys, pod runtime hashes and NEVRAs; f3 boot 1794574308, UEFI vars 4f63d71b, rocky.conf, vm-run, firmware, bridge members re0 tap0, /usr/bin/ssh, swap 0 used, fdescfs.ko (39) and fusefs.ko (40) loaded with no mounts, r23 paths absent"
+  },
   "uefi_vars_sha256": "4f63d71bbf0b44279ef1588865f659c1b09d818dfe9e007df8d6f3450fb1d375",
   "vm_run_sha256": "43753bc83263c26a25f49e7ccd3c1da79dca7a6361442b3c61a1831bd2782db0"
  },

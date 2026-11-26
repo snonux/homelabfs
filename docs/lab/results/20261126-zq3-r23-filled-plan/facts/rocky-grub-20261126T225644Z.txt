@@ -1,0 +1,26 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+saved_entry=b26c0ac534534d7fb81b3e0698558bc3-5.14.0-741.27.1.el9_9.x86_64
+menu_auto_hide=1
+boot_success=0
+boot_indeterminate=7
+next_entry=
+index=0
+kernel="/boot/vmlinuz-7.0.3-1.el9.elrepo.x86_64"
+title="Rocky Linux (7.0.3-1.el9.elrepo.x86_64) 9.7 (Blue Onyx)"
+index=1
+kernel="/boot/vmlinuz-6.1.190-1.el9.elrepo.x86_64"
+title="Rocky Linux (6.1.190-1.el9.elrepo.x86_64) 9.8 (Blue Onyx)"
+index=2
+kernel="/boot/vmlinuz-5.14.0-741.27.1.el9_9.x86_64"
+title="Rocky Linux (5.14.0-741.27.1.el9_9.x86_64) 9.9 (Blue Onyx)"
+index=3
+kernel="/boot/vmlinuz-5.14.0-741.24.1.el9_9.x86_64"
+title="Rocky Linux (5.14.0-741.24.1.el9_9.x86_64) 9.9 (Blue Onyx)"
+index=4
+kernel="/boot/vmlinuz-5.14.0-741.22.1.el9_9.x86_64"
+title="Rocky Linux (5.14.0-741.22.1.el9_9.x86_64) 9.9 (Blue Onyx)"
+index=5
+kernel="/boot/vmlinuz-0-rescue-b26c0ac534534d7fb81b3e0698558bc3"
+title="Rocky Linux (0-rescue-b26c0ac534534d7fb81b3e0698558bc3) 9.7 (Blue Onyx)"
