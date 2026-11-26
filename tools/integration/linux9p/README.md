@@ -2869,3 +2869,60 @@ not committed; `evidence/ml4`):
 `evidence/k84` now also records `error`, `peakdisk` (null, because run.py
 does not record it) and `source_changes` per run, plus the committed
 `allocate-1` receipt.
+
+## Retire before failing on a request's completion package (`6m4`)
+
+zq3-r21 R21-1 ([run record](../../../docs/lab/results/20261126-zq3-r21/README.md#r21-1-t1s-fchmod-of-a-second-file-fails-enospc-and-both-sessions-block-with--28))
+blocked both sessions with a local `-28`. The ordinary byte partition
+(512 MiB, global across mounts) held 9 retained m0 requests and 7 unretired
+VIEW_ACQUIRE tickets.
+
+- **What each owner holds.** Each request holds its 4 MiB transport
+  reservation and its completion package (about 30.9 MiB,
+  `hfs_completion_capacity(false, HFS_BODY_MAX)`) until `hfs_retire` frees
+  it. Each ticket holds 1 MiB plus a view package of about 24.5 MiB.
+- **The bug.** `hfs_call_reserve` retried after `hfs_retire` only when the
+  reservation failed. The package came later, from `hfs_completion_new` in
+  `hfs_call_prepare`, with no retirement.
+- **The effect.** With room for the reservation but not for the package,
+  every ordinary call failed ENOSPC locally while retirable requests held
+  the bytes. The controlled cleanup calls failed too, because they use the
+  ordinary bytes.
+
+Patch 0003 (`hfs_session.c` only) moves the package into `hfs_call_reserve`.
+Its loop has these properties:
+- One attempt takes the reservation and then the package.
+- A failed attempt keeps neither.
+- ENOSPC/EAGAIN from either part runs `hfs_retire` once, then the attempt is
+  repeated.
+
+One retirement is enough when anything retires, since each retired request
+returns a complete package of the same size. `hfs_call_prepare` now only
+fills the buffers.
+
+Regression: controlled_received `--scenario package`
+(`TestControlledReceivedActualPackageRetirement`, consumer `PACKAGE_REQUEST`,
+features 16383 and 32767). Ordinary bytes are held so that only the
+reservation plus 1 MiB stays free. Then:
+- with ROOT and CREATE retained but unborrowed, GETATTR must succeed after
+  exactly one RETIRE, with at least one request retired;
+- with that GETATTR's result held at the head, the next GETATTR must fail
+  ENOSPC with no claim, cell, request or byte change and no native bytes.
+
+Proof:
+- **Red first:** on the unchanged series the first case failed with
+  `C6 PACKAGE_REQUEST session0 ... = -28 want0` for both feature sets.
+- **Green:** with the fix the scenario passed (59.8 s).
+- **The full suite on the regenerated series:**
+  - `--scenario both` passed all 21 stages (`package` took 63.0 s);
+  - `tests/controlled` passed;
+  - `tests/setattr` and `tests/requests` passed.
+- **Not run:** the guest kernel compile. The r22 candidate build compiles it.
+
+Not covered:
+- One session can still starve another that has nothing to retire: the
+  bytes are global, but `hfs_retire` only retires the caller's session.
+- `hfs_view_ticket_prepare` still takes its package without a retirement
+  retry.
+- Acquisition tickets stay charged while no recall runs (xf4 advances and
+  vj4 self admissions); only allocation pressure retires them then.

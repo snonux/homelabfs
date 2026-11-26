@@ -1136,6 +1136,27 @@ static void command(char *line) {
   else {assert(!*credit);u64 remaining=control?hfs_controlled_registry->budget.control_bytes-hfs_controlled_registry->control_base_bytes-hfs_controlled_control_used:hfs_controlled_registry->budget.ordinary_bytes-hfs_controlled_ordinary_used;assert(remaining>sizeof(struct hfs_controlled_credit));assert(!hfs_controlled_reserve(f->session,remaining-sizeof(struct hfs_controlled_credit),control,credit));}
   done(id,0,NULL,0);return;
  }
+ /* 6m4 (zq3-r21 R21-1): one ordinary GETATTR through the actual hfs_call
+  * while the ordinary byte partition has room for the request's transport
+  * reservation but not for its completion package. Retained, retirable
+  * requests (each still holding its own full package) are what a retirement
+  * can return. A refusal must leave claim, cell, request and byte counters
+  * unchanged; success keeps the result held (users) for a later refusal. */
+ if(!strcmp(operation,"PACKAGE_REQUEST")){
+  struct hfs_session *session=f->session;void *pressure=NULL;
+  u64 request_bytes=(hfs_controlled_consumed(session)?4ULL:16ULL)*1024*1024+sizeof(struct hfs_controlled_credit);
+  u64 leave=request_bytes+(1ULL<<20),remaining=hfs_controlled_registry->budget.ordinary_bytes-hfs_controlled_ordinary_used;
+  assert(hfs_completion_capacity(false,HFS_BODY_MAX)>leave);
+  assert(remaining>leave+sizeof(struct hfs_controlled_credit));
+  assert(!hfs_controlled_reserve(session,remaining-leave-sizeof(struct hfs_controlled_credit),false,&pressure));
+  u64 next=session->next_claim,cell=session->next_cell,ordinary=hfs_controlled_ordinary_used;u32 requests=session->nr_requests;
+  struct hfs_buf args={0};struct hfs_json *result=NULL;assert(!hfs_args_init(&args));args.len=decode_hex(line+consumed,args.data,args.cap);
+  int err=hfs_call(session,"GETATTR",&args,&f->credential,false,&result);
+  if(err){assert(err==-ENOSPC&&!result);assert(session->next_claim==next&&session->next_cell==cell&&session->nr_requests==requests&&hfs_controlled_ordinary_used==ordinary);}
+  else{assert(session->next_claim==next+1&&session->nr_requests<=requests&&session->next_cell>cell&&result->owner);
+   assert(f->nr_held_results<ARRAY_SIZE(f->held_results));f->held_results[f->nr_held_results++]=result;result=NULL;}
+  hfs_controlled_unreserve(session,pressure);hfs_buf_free(&args);done(id,err,NULL,0);return;
+ }
  if(!strcmp(operation,"CLEANUP_REQUEST")){
   char op[32];int used=0;assert(sscanf(line+consumed,"%31s %n",op,&used)==1);
   assert(!strcmp(op,"DESCRIPTION_CLOSE")||!strcmp(op,"DESCRIPTION_RELEASE")||!strcmp(op,"FORGET")||!strcmp(op,"PROCESS_EXIT"));

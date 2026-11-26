@@ -693,7 +693,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,4027 @@
+@@ -0,0 +1,4047 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -3212,32 +3212,52 @@ new file mode 100644
 +	kfree(request);
 +}
 +
-+/* The request's full transport credit, retrying once after retirement. */
++/* The request's complete charge: its transport reservation and its
++ * completion package (hfs_completion_new; none without a controlled
++ * provider), retrying once after retirement. A failed attempt keeps neither.
++ *
++ * 6m4 (zq3-r21 R21-1): a retained request holds both until hfs_retire frees
++ * it, and the package is the larger part (about 31 MiB against 4 MiB for an
++ * ordinary request with HFS_BODY_MAX). Before 6m4 only the reservation was
++ * retried after retirement and the package was taken later, in
++ * hfs_call_prepare, without one: with room for the reservation but not the
++ * package, every ordinary call (and the controlled cleanup calls, which use
++ * the ordinary bytes) failed ENOSPC locally although retirable requests held
++ * the bytes. One retirement is enough when any request retires: each retired
++ * request returns a complete package of the same size.
++ */
 +static int hfs_call_reserve(struct hfs_session *session, struct hfs_request *request,
 +			    bool resource_control)
 +{
 +	u64 bytes = (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024;
++	bool retired = false;
 +	int err;
 +
 +	request->session = session;
-+	err = session->provider->reserve(session, bytes, resource_control, &request->reservation);
-+	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire(session))
++	for (;;) {
 +		err = session->provider->reserve(session, bytes, resource_control,
 +						 &request->reservation);
-+	return err;
++		if (!err) {
++			err = hfs_completion_new(session, resource_control, false, HFS_BODY_MAX,
++						 &request->completion);
++			if (err) {
++				session->provider->unreserve(session, request->reservation);
++				request->reservation = NULL;
++			}
++		}
++		if (retired || (err != -ENOSPC && err != -EAGAIN) || hfs_retire(session))
++			return err;
++		retired = true;
++	}
 +}
 +
-+/* Fill a reserved request; nothing is numbered or published yet. */
++/* Fill a reserved and packaged request; nothing is numbered or published yet. */
 +static int hfs_call_prepare(struct hfs_session *session, const char *opcode,
 +			    const struct hfs_buf *args, const struct hfs_cred *cred, bool control,
 +			    struct hfs_request *request, struct hfs_buf *payload, u8 digest[32])
 +{
-+	bool resource_control = hfs_call_control_bytes(session, opcode, control);
 +	int err;
 +
-+	err = hfs_completion_new(session, resource_control, false, HFS_BODY_MAX, &request->completion);
-+	if (err)
-+		return err;
 +	if (hfs_buf_init(&request->claim, 4096) ||
 +	    hfs_buf_init(&request->intent, args->len + 64) ||
 +	    hfs_buf_init(&request->credentials, 16384) ||

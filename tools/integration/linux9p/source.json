@@ -105,7 +105,7 @@
     "fs/9p/hfs_protocol.h": "37fede9544bc08cc048b24989f4150bbc062e2105197a628fae849070c272d8f",
     "fs/9p/hfs_received.h": "79fb93d92153a23b3d649836319a018aa235a07d68006b708deede6a2d07ce59",
     "fs/9p/hfs_received.inc": "483f588e92988c1a1f68a46e17c0c5d68bd3f0d25a288fbd416a71aabe523530",
-    "fs/9p/hfs_session.c": "7f9e208c7a5c9e3f7bbdf47828d1ae862a83775baa2a61b6e515adae6348d03c",
+    "fs/9p/hfs_session.c": "e24c7050981f80077cbf5b5e442c0da79e420cc645bfb43e56f4f1af4f7a4113",
     "fs/9p/hfs_view.c": "30d31cb7840f1606820b46b0f2305cf816c80a4baf94db8ccf8baa9e452eff00",
     "fs/9p/hfs_view.h": "79d7c22e1f0bc13185bbbd1f2499c1382b91082b2a8e7d11284f48f3ecd1b78c",
     "fs/9p/vfs_super.c": "dd56d86dc97e5eeeaead54e4b065eb830da277ec4a887088a83226e3641d031f",
@@ -135,9 +135,9 @@
       "sha256": "a506f2897ef6ea0e340369feaeefa48f08c2b251a3ba1936743aff06dadb749a"
     },
     {
-      "bytes": 252098,
+      "bytes": 252959,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "69eb24de98eb2d9bd666fec6c2e43fa11be642c6d35bc100f28722fd84f34bfa"
+      "sha256": "a6af45c0f1f892f8fdad028cb95ca1eab868e81e11d91163ae8d448f8e149adf"
     },
     {
       "bytes": 282623,
@@ -150,7 +150,7 @@
       "sha256": "a1f27b8a04e85c702a8d19d96dff5da55f6585e54b8005947ecf6c522593b39b"
     }
   ],
-  "project_task": "bl4",
+  "project_task": "6m4",
   "source_kind": "upstream Linux reference",
   "tag": "v6.1.190",
   "tag_object": "9ad12a4c0c7a36f365c13ea17d88499618440a7b",

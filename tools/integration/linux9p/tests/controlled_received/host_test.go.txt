@@ -2234,6 +2234,61 @@ func TestControlledReceivedActualCleanupByteFunding(t *testing.T) {
 	}
 }
 
+// 6m4 (zq3-r21 R21-1): a retained request keeps its full completion package
+// until retirement. When the ordinary partition still funds the next request's
+// transport reservation but not its package, the actual hfs_call must retire
+// and retry instead of failing ENOSPC locally; with nothing retirable (the
+// oldest request's result still held) it still refuses without a claim/cell.
+func TestControlledReceivedActualPackageRetirement(t *testing.T) {
+	for _, protocol := range []guestbridge.Protocol{guestbridge.MappedProtocol(), guestbridge.TerminalProtocol()} {
+		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
+			r := newSourceRigDomainsUnstarted(t, protocol, 2, receivedInitialIDMap)
+			c := startReceivedCarrier(t, r)
+			request := func(op string, args any) []byte {
+				return c.action("REQUEST", 0, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+			}
+			root := receivedResult(t, request("ROOT", map[string]any{}))
+			c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+			caps := receivedResult(t, request("CREATE", map[string]any{"parent": root[0], "name": "7061636b616765", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+			var path guestbridge.Capability
+			for _, cap := range caps {
+				if cap.Kind == "PATH" {
+					path = cap
+				}
+			}
+			if path.Kind == "" {
+				t.Fatal("missing actual CREATE PATH capability")
+			}
+			c.action("ADOPT_DESCRIPTION", 0, "CREATE", 0)
+			// ROOT and CREATE stay retained but unborrowed: retirable.
+			c.action("REPLIES_DROP", 0, "", 0)
+			getattr := hex.EncodeToString(mustRuntimeJSON(t, map[string]any{"object": path}))
+			retires := func() int {
+				n := 0
+				for _, command := range c.commands {
+					if command.Op == "RETIRE" {
+						n++
+					}
+				}
+				return n
+			}
+			before := retires()
+			c.action("PACKAGE_REQUEST", 0, getattr, 0)
+			if retires() != before+1 {
+				t.Fatalf("package pressure retired with %d RETIRE exchanges, want 1", retires()-before)
+			}
+			// The GETATTR result stays held, so the oldest request cannot retire.
+			before, commands := retires(), len(c.commands)
+			c.action("PACKAGE_REQUEST", 0, getattr, -28)
+			if retires() != before || len(c.commands) != commands {
+				t.Fatal("unretirable package pressure emitted native bytes")
+			}
+			c.action("RETIRE", 0, "", 0)
+			c.close()
+		})
+	}
+}
+
 // x84 review (zq3-r10 R10-1): at process exit PROCESS_EXIT normally reaches
 // the host first; the exiting process's own DESCRIPTION_RELEASE and a FORGET
 // queued later (hfs_evict_inode) then carry the credentials of an exited

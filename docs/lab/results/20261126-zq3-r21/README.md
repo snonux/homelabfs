@@ -94,12 +94,37 @@ So the host recorded no refusal. The `-28` came from the guest, and both session
 - m0 on its `fchmod` and the following DESCRIPTION_RELEASE;
 - m1 on a PROCESS_EXIT, the child's exit.
 
-**Analysis, not yet established.**
-- ENOSPC from the hfs guest points at a guest-side budget (the sheet's rule: "an `ENOSPC` in the guest log would point at the guest budget"). The enrollment budget is reservations 1024, received 256, 512/512 MiB.
-- Two sessions failing together suggests a resource they share, or one they exhaust at the same pace. Candidates are a guest reservation/credit pool or claim-entry accounting.
-- This run is the first in which most observations were served by advances (8) and self admissions (8) rather than recalls. A recall used to retire leases and reservations along the way. If an advance or a self admission keeps a reservation or credit that a recall used to return, the pool would drain faster in exactly this run.
-- The `fchmod` is the first SETATTR on `group-tail`. With `hfs_fdattr` it goes through the open description (s64), so s64's fd path is also in scope.
-- Offline decoding of the owner snapshots (`credentials-owner-live.tar`, `credentials-owner-after.tar`, `f3-evidence.tar`) and the guest's reservation accounting is needed. No fix is claimed here.
+**Root cause (task 6m4).** The guest's global ordinary byte partition (512 MiB, shared by both mounts) was full of retained but retirable owners. `hfs_call` funded the next request's 4 MiB transport reservation and then failed on its completion package, a step that never retired anything.
+
+How the guest charges ordinary bytes (`hfs_controlled_reserve_owned`; the counters are global across mounts):
+- Every `hfs_call` takes a 4 MiB transport reservation plus a completion package of about 30.9 MiB (`hfs_completion_capacity(false, HFS_BODY_MAX)`, struct sizes of a few KiB left out). That is about 34.9 MiB per request. The request keeps both until `hfs_retire` frees it after the host's RETIRED.
+- Every VIEW_ACQUIRE ticket takes 1 MiB plus a view package of about 24.5 MiB, and keeps both until VIEW_RETIRE.
+- Since the controlled cleanup calls (DESCRIPTION_RELEASE, PROCESS_EXIT, ...) send on the ordinary lane, they use the same bytes (`hfs_call_control_bytes`).
+
+What the owner snapshot shows (`credentials-owner-live.tar`, decoded offline):
+- **m0's claims:** floor 41, high 50. Claims 42 to 50 are TERMINAL and unretired:
+  - 42 LOOKUP `group`, 43 GETATTR and 44 PROCESS_EXIT, all from access child 2 (uid 41001, groups `[42001,42003]`, an exited process);
+  - 45 to 50 from the T1 parent (uid 0): GETATTR, GETATTR, LOOKUP (NotFound), CREATE `group-tail`, GETATTR, and SETATTR (the `fchown`, gid 44022).
+- **The controller:** 7 unretired m0 VIEW_ACQUIRE tickets, families `a2992a…` 1-3 and `c422868f…` 16-19, plus 3 VIEW_RELEASE tickets on the control side. m1 had no unretired claim or ticket.
+
+The guest frees a request only after the host retires it, and a ticket only after VIEW_RETIRE, so the guest still held all of these. That comes to at least 9 × 34.9 + 7 × 25.5 ≈ 492.6 MiB of the 512 MiB. Less than 19.4 MiB was left, before descriptions, processes, cache pages and m1's owners.
+
+How that produced each failure:
+- **`fchmod`:** its 4 MiB reservation fit and its 30.9 MiB package did not. `hfs_call_reserve` retired and retried only when the reservation itself failed. The package was taken afterwards in `hfs_call_prepare` (`hfs_completion_new`), with no retirement. So the call returned ENOSPC locally, about 0.2 ms after it was invoked, and sent nothing.
+- **The two cleanup calls:** the following DESCRIPTION_RELEASE (m0) and PROCESS_EXIT (m1) failed the same way and blocked both sessions. The view workers then stopped with -112.
+- **The host floor:** it stayed at 41 (the failure OBSERVE and both snapshots). The host accepts RETIRE with an exited issuer's credentials (`retireControlled`, `allowExited`). So a retirement attempt would have retired claims 42-44 (one credential run) and returned about 105 MiB, enough for the `fchmod`.
+
+Ruled out:
+- **The host:** the exporter recorded no refusal, fence or stderr.
+- **s64's description path:** it failed before any argument was built. The SETATTR args are only built after the charge.
+- **Slot or received exhaustion:** about 290 of 512 ordinary slots and 48 of 128 received slots were in use.
+- **The tag pool.**
+
+Contributing, not a bug proven here:
+- The 7 acquisition tickets (about 179 MiB) stayed charged. Before this run, recalls disposed cache pages, and the cleanup work ran `hfs_retire` and `hfs_view_retire` along the way (`hfs_mmap.c`). With xf4 advances and vj4 self admissions, no recall ran during T1. Retirement then happened only under allocation pressure.
+- Group-tail is also the deepest point T1 has reached in any run.
+
+Fix: task 6m4 (series regenerated, `hfs_session.c` only). `hfs_call_reserve` now takes the reservation and the package together, and on ENOSPC/EAGAIN from either it releases both, retires once and retries. The Red-first regression is controlled_received `--scenario package`.
 
 **Effect.** T2-T11 did not run. In particular, the T3 s64 peer-rename guard, T7 (pod) and the hh4/dh4 paths in T9-T11 remain without a real run.
 
@@ -140,7 +165,12 @@ So the host recorded no refusal. The `-28` came from the guest, and both session
 
 ## Follow-up
 
-- **New task (R21-1):** decode the guest `-28` on DESCRIPTION_RELEASE, PROCESS_EXIT and `fchmod` from the owner snapshots. Check whether xf4 advances or vj4 self admissions keep a guest reservation or credit that recalls used to return, and check the s64 SETATTR-through-fd path. Then reproduce in the T1 model replay with the guest budget.
+- **R21-1 (task 6m4):** decoded and fixed in the guest series (`hfs_session.c`, patch 0003); see the root cause above.
+  - r22 needs a new candidate build: the guest kernel changes, and the daemon and exporter do not.
+  - Not covered by 6m4:
+    - one session can still starve another that has nothing to retire, because the bytes are global but `hfs_retire` is per session;
+    - `hfs_view_ticket_prepare` still takes its package without a retirement retry;
+    - acquisition tickets stay charged while no recall runs.
 - **Validated by this run:**
   - sj4 (R20-1);
   - tj4/wj4 (advances fire);

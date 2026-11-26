@@ -150,6 +150,14 @@ C7 adds these test-only commands, all invoking the maintained production helpers
   count0 fills ordinary reservation slots. Two sessions contribute pressure.
   `ORDINARY_REFUSES` requires actual `hfs_call` refusal without number/cell
   issuance. `UNPRESSURE` disposes only those exact cookie owners.
+* `PACKAGE_REQUEST ID SESSION ARGSHEX` (6m4, zq3-r21 R21-1) holds ordinary
+  bytes so that only the request's transport reservation plus 1 MiB stays
+  free, less than its completion package, then calls actual `hfs_call`
+  GETATTR. Success must have retired at least one request and keeps the
+  result held; a refusal must be ENOSPC with no claim, cell, request or byte
+  change. `--scenario package` (`TestControlledReceivedActualPackageRetirement`)
+  runs it once with retirable ROOT/CREATE requests (one RETIRE, then success)
+  and once with the held GETATTR result at the head (ENOSPC, no native bytes).
 * `CLOSE_PENDING` invokes actual provider STOP/retain while dirty pins, results
   and cookies remain. It asserts refusal preserves every owner; subsequent
   funded controls must use the typed closing path. It is no native unmount.
