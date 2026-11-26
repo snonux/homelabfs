@@ -88,4 +88,7 @@ struct hfs_session {
  struct { uuid_t nonce,view_control_nonce,anchor,acquisition_anchor,acquisition_nonce,control_anchor; u32 protocol_features; } enrollment;
 };
 static void hfs_process_exit_work(struct work_struct *work) { (void)work;abort(); }
+/* 6m4: hfs_view_ticket_charge retires on ENOSPC; this fixture has no
+ * requests to retire, so the charge's refusal stands (as before 6m4). */
+static int hfs_retire_shared(struct hfs_session *session) { (void)session;return -EAGAIN; }
 #endif

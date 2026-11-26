@@ -156,6 +156,8 @@ struct hfs_session {
 	u16 exporter_error; /* oc4: printed by hfs_session_block */
 	/* 5f4: counts its wake-ups (hfs_session_stop_wake); see wake_up_all. */
 	int stop_wait;
+	/* 6m4: hfs_retire_shared pins; always 0 here (nothing retires). */
+	atomic_t budget_users;
 };
 struct hfs_controlled_mount {
 	struct super_block *super;
@@ -206,6 +208,11 @@ static bool hfs_trace_registered;
 static struct tracepoint exit_tracepoint, *hfs_exit_tracepoint;
 static struct list_head hfs_sessions = { &hfs_sessions, &hfs_sessions };
 static spinlock_t hfs_sessions_lock;
+/* 6m4: unlisting waits for zero pins (kill_sb, failed mount); no case
+ * pins, so the wait must pass at once. */
+static wait_queue_head_t hfs_budget_wait;
+#define atomic_read(a) (*(a))
+#define wait_event(w, cond) do { (void)(w); if (!(cond)) abort(); } while (0)
 static struct mutex hfs_controlled_lock;
 static struct hfs_controlled_mount controlled_mount;
 static struct user_namespace init_user_ns;

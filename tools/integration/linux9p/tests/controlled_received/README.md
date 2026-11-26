@@ -150,6 +150,22 @@ C7 adds these test-only commands, all invoking the maintained production helpers
   count0 fills ordinary reservation slots. Two sessions contribute pressure.
   `ORDINARY_REFUSES` requires actual `hfs_call` refusal without number/cell
   issuance. `UNPRESSURE` disposes only those exact cookie owners.
+* `PACKAGE_REQUEST ID SESSION ARGSHEX` (6m4, zq3-r21 R21-1) holds ordinary
+  bytes so that only the request's transport reservation plus 1 MiB stays
+  free, less than its completion package, lists every fixture session on the
+  global session list (as a mount does), then calls actual `hfs_call`
+  GETATTR. Success must have retired at least one request across the
+  sessions and keeps the result held; a refusal must be ENOSPC with no
+  claim, cell, request or byte change. `PACKAGE_TICKET ID SESSION` does the
+  same for one ordinary ticket from actual `hfs_view_ticket_prepare` (room
+  for its 1 MiB reservation and family credit, not its view package) and
+  puts the ticket again. `--scenario package`
+  (`TestControlledReceivedActualPackageRetirement`,
+  `TestControlledReceivedActualTicketPackageRetirement`) gives session 0
+  retirable ROOT/CREATE (later GETATTR) requests and session 1 none: session
+  1's call must succeed after exactly one RETIRE (session 0's), the same
+  session's call after one RETIRE of its own, and with nothing retirable
+  anywhere each refuses ENOSPC with no native bytes.
 * `CLOSE_PENDING` invokes actual provider STOP/retain while dirty pins, results
   and cookies remain. It asserts refusal preserves every owner; subsequent
   funded controls must use the typed closing path. It is no native unmount.
@@ -354,7 +370,7 @@ up to 85 s on a loaded host, and `dirty` runs two).
 `--scenario both` (bh4) runs every `TestControlledReceivedActual*` test once,
 as one stage per scenario (`provider`, `passed-grant`, `advance`,
 `corruption`, `dirty`, `interleaving`, `allocate`, `gap`, `abandon`,
-`mixed`, `effected`, `readdir`, the six `terminal-*` groups, `cleanup`,
+`package`, `mixed`, `effected`, `readdir`, the six `terminal-*` groups, `cleanup`,
 `exit-cleanup`), each with its own Go timeout and the runner's 1200 s stage
 bound. It used to be one Go run of `^TestControlledReceivedActual` under
 180 s, which timed out after three or four tests because each test builds

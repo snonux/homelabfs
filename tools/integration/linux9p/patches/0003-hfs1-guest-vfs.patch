@@ -112,7 +112,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,576 @@
+@@ -0,0 +1,582 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -433,6 +433,11 @@ new file mode 100644
 +	u32 nr_view_control_tickets;
 +	u32 nr_view_families;
 +	struct list_head global;
++	/* 6m4: hfs_retire_shared callers that pinned this session while it
++	 * was on the global list. Unlisting (kill_sb, a failed mount) waits
++	 * for zero before the session can be retained or freed.
++	 */
++	atomic_t budget_users;
 +	struct workqueue_struct *control;
 +	/* hh4: hfs_session_abandon_work, queued on control at most once per
 +	 * session by hfs_session_block (HFS_ABANDON_QUEUED). kill_sb flushes
@@ -644,6 +649,7 @@ new file mode 100644
 +	const struct hfs_buf *payload, u64 first, u64 through, struct hfs_retirement_cut **out);
 +void hfs_retirement_cut_free(struct hfs_session *session, struct hfs_retirement_cut *cut);
 +int hfs_retire(struct hfs_session *session);
++int hfs_retire_shared(struct hfs_session *session);
 +int hfs_session_destroy(struct hfs_session *session);
 +int hfs_cap_parse(struct hfs_session *session, const struct hfs_json *json,
 +		  int token, const char *kind, struct hfs_cap **out);
@@ -693,7 +699,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,4027 @@
+@@ -0,0 +1,4105 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -716,6 +722,8 @@ new file mode 100644
 +static const struct hfs_provider *hfs_provider;
 +static LIST_HEAD(hfs_sessions);
 +static DEFINE_SPINLOCK(hfs_sessions_lock);
++/* 6m4: woken when a session's budget_users drops to zero. */
++static DECLARE_WAIT_QUEUE_HEAD(hfs_budget_wait);
 +static bool hfs_trace_registered;
 +static struct tracepoint *hfs_exit_tracepoint;
 +static atomic_t hfs_active_sessions = ATOMIC_INIT(0);
@@ -3212,32 +3220,58 @@ new file mode 100644
 +	kfree(request);
 +}
 +
-+/* The request's full transport credit, retrying once after retirement. */
++/* The request's complete charge: its transport reservation and its
++ * completion package (hfs_completion_new; none without a controlled
++ * provider), retrying once after a shared retirement (hfs_retire_shared). A
++ * failed attempt keeps neither.
++ *
++ * 6m4 (zq3-r21 R21-1): a retained request holds both until hfs_retire frees
++ * it, and the package is the larger part (about 31 MiB against 4 MiB for an
++ * ordinary request with HFS_BODY_MAX). Before 6m4 only the reservation was
++ * retried, after retiring only this session, and the package was taken later,
++ * in hfs_call_prepare, without any retirement: with room for the reservation
++ * but not the package, every ordinary call (and the controlled cleanup calls,
++ * which use the ordinary bytes) failed ENOSPC locally although retirable
++ * requests, possibly another mount's, held the bytes.
++ *
++ * One retry suffices when a retirement freed a request of the same byte lane:
++ * it returns a complete package of the same size. A retirement that frees
++ * only the other lane's requests (an ordinary caller after control-lane
++ * retirements, or the reverse) returns none of these bytes, and the retry
++ * fails cleanly with ENOSPC as before.
++ */
 +static int hfs_call_reserve(struct hfs_session *session, struct hfs_request *request,
 +			    bool resource_control)
 +{
 +	u64 bytes = (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024;
++	bool retired = false;
 +	int err;
 +
 +	request->session = session;
-+	err = session->provider->reserve(session, bytes, resource_control, &request->reservation);
-+	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire(session))
++	for (;;) {
 +		err = session->provider->reserve(session, bytes, resource_control,
 +						 &request->reservation);
-+	return err;
++		if (!err) {
++			err = hfs_completion_new(session, resource_control, false, HFS_BODY_MAX,
++						 &request->completion);
++			if (err) {
++				session->provider->unreserve(session, request->reservation);
++				request->reservation = NULL;
++			}
++		}
++		if (retired || (err != -ENOSPC && err != -EAGAIN) || hfs_retire_shared(session))
++			return err;
++		retired = true;
++	}
 +}
 +
-+/* Fill a reserved request; nothing is numbered or published yet. */
++/* Fill a reserved and packaged request; nothing is numbered or published yet. */
 +static int hfs_call_prepare(struct hfs_session *session, const char *opcode,
 +			    const struct hfs_buf *args, const struct hfs_cred *cred, bool control,
 +			    struct hfs_request *request, struct hfs_buf *payload, u8 digest[32])
 +{
-+	bool resource_control = hfs_call_control_bytes(session, opcode, control);
 +	int err;
 +
-+	err = hfs_completion_new(session, resource_control, false, HFS_BODY_MAX, &request->completion);
-+	if (err)
-+		return err;
 +	if (hfs_buf_init(&request->claim, 4096) ||
 +	    hfs_buf_init(&request->intent, args->len + 64) ||
 +	    hfs_buf_init(&request->credentials, 16384) ||
@@ -4202,6 +4236,8 @@ new file mode 100644
 +	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
 +	list_del_init(&session->global);
 +	spin_unlock_irqrestore(&hfs_sessions_lock, irqflags);
++	/* 6m4: no hfs_retire_shared caller still uses it (it may be freed). */
++	wait_event(hfs_budget_wait, !atomic_read(&session->budget_users));
 +	if (session->nr_requests || session->blocked || session->next_cell > 1) {
 +		/* A failed attach cannot discard admitted claims or control cells. */
 +		__module_get(THIS_MODULE);
@@ -4303,6 +4339,8 @@ new file mode 100644
 +	spin_lock_irqsave(&hfs_sessions_lock, flags);
 +	list_del_init(&session->global);
 +	spin_unlock_irqrestore(&hfs_sessions_lock, flags);
++	/* 6m4: an hfs_retire_shared caller's pin ends before retention. */
++	wait_event(hfs_budget_wait, !atomic_read(&session->budget_users));
 +	tracepoint_synchronize_unregister();
 +	kill_anon_super(sb);
 +	flush_workqueue(session->control);
@@ -4620,6 +4658,52 @@ new file mode 100644
 +	return err;
 +}
 +EXPORT_SYMBOL_GPL(hfs_retire);
++
++/* 6m4 (zq3-r21 R21-1): retire this session's retirable requests and those
++ * of every other listed session of the same provider. The controlled
++ * provider's byte and slot partitions are global across its mounts, so the
++ * owners that exhaust them may all belong to another mount: in r21, m1 had
++ * nothing to retire while m0's retained requests filled the ordinary bytes,
++ * and m0 retires only under its own allocation pressure. Returns 0 if any
++ * session retired something, else this session's own hfs_retire error.
++ *
++ * Each other session is pinned (budget_users) under hfs_sessions_lock and
++ * retired with no lock held; unlisting (v9fs_hfs_kill_super, hfs_mount_fail)
++ * waits for its pins to drop, so a pinned session is never retained or freed
++ * underneath. hfs_retire takes only the retired session's own retirement
++ * mutex and lock, never the caller's. A closing session is skipped. Nothing
++ * retirable anywhere leaves the caller's ENOSPC as it was.
++ */
++int hfs_retire_shared(struct hfs_session *session)
++{
++	struct hfs_session **sessions, *other;
++	unsigned long flags;
++	u32 count = 0, max = atomic_read(&hfs_active_sessions), i;
++	int err = hfs_retire(session);
++
++	sessions = max ? kmalloc_array(max, sizeof(*sessions), GFP_KERNEL) : NULL;
++	if (!sessions)
++		return err;
++	spin_lock_irqsave(&hfs_sessions_lock, flags);
++	list_for_each_entry(other, &hfs_sessions, global) {
++		if (count == max)
++			break;
++		if (other == session || other->provider != session->provider ||
++		    READ_ONCE(other->closing))
++			continue;
++		atomic_inc(&other->budget_users);
++		sessions[count++] = other;
++	}
++	spin_unlock_irqrestore(&hfs_sessions_lock, flags);
++	for (i = 0; i < count; i++) {
++		if (!hfs_retire(sessions[i]))
++			err = 0;
++		if (atomic_dec_and_test(&sessions[i]->budget_users))
++			wake_up_all(&hfs_budget_wait);
++	}
++	kfree(sessions);
++	return err;
++}
 +
 +/* Only a protected recovery/retirement provider can relinquish retained state.
 + * 1h4: each release of session->retirement goes through

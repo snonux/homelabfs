@@ -2869,3 +2869,83 @@ not committed; `evidence/ml4`):
 `evidence/k84` now also records `error`, `peakdisk` (null, because run.py
 does not record it) and `source_changes` per run, plus the committed
 `allocate-1` receipt.
+
+## Retire across mounts before failing on a completion package (`6m4`)
+
+zq3-r21 R21-1 ([run record](../../../docs/lab/results/20261126-zq3-r21/README.md#r21-1-t1s-fchmod-of-a-second-file-fails-enospc-and-both-sessions-block-with--28))
+blocked both sessions with a local `-28`. The controlled provider's ordinary
+byte partition (512 MiB) is global across mounts, and it held 9 retained m0
+requests and 7 unretired m0 VIEW_ACQUIRE tickets.
+
+- **What each owner holds.**
+  - A request holds its 4 MiB transport reservation and its completion
+    package (about 30.9 MiB, `hfs_completion_capacity(false, HFS_BODY_MAX)`)
+    until `hfs_retire` frees it.
+  - A ticket holds 1 MiB plus a view package of about 24.5 MiB.
+- **Bug 1: the package was never covered.** `hfs_call_reserve` retired and
+  retried only when the reservation failed. The package came later, from
+  `hfs_completion_new` in `hfs_call_prepare`, with no retirement.
+  `hfs_view_ticket_prepare` never retired at all.
+- **Bug 2: retirement was per session.** Even with a retirement, it only
+  touched the caller's session. m1, which had nothing to retire, failed
+  while m0's retirable requests held the bytes. m0 retires only under its
+  own allocation pressure or in recall cleanup, and no recall ran.
+
+The fix spans patch 0003 (`hfs.h`, `hfs_session.c`) and patch 0004
+(`hfs_lease.c`):
+
+- **`hfs_call_reserve`** takes the reservation and the package as one
+  attempt. A failed attempt keeps neither. On ENOSPC/EAGAIN it runs
+  `hfs_retire_shared` and retries once. `hfs_call_prepare` now only fills
+  the buffers.
+- **`hfs_view_ticket_prepare`** works the same way through
+  `hfs_view_ticket_charge`: reservation, family credit and view package.
+- **`hfs_retire_shared`** retires the caller's session, then every other
+  session of the same provider on `hfs_sessions`:
+  - each other session is pinned (`session->budget_users`, taken under
+    `hfs_sessions_lock`) and retired with no lock held;
+  - `v9fs_hfs_kill_super` and `hfs_mount_fail` wait on `hfs_budget_wait`
+    for the pins to drop after unlisting, before a session can be retained
+    or freed;
+  - `hfs_retire` takes only the retired session's own retirement mutex and
+    lock, so there is no cross-session lock order;
+  - closing sessions are skipped.
+- **When one retry is enough:** a retirement returns complete packages, but
+  only for its own byte lane. A control-lane retirement returns no ordinary
+  bytes, or the reverse. When nothing on the caller's lane is retirable
+  anywhere, the retry fails cleanly with ENOSPC and there is no wait.
+
+Regression: controlled_received `--scenario package`, with consumer
+`PACKAGE_REQUEST` and `PACKAGE_TICKET`, both feature sets. Each call runs
+with only the reservation plus 1 MiB of ordinary bytes free, and lists both
+fixture sessions as mounts are listed.
+- `TestControlledReceivedActualPackageRetirement`:
+  - session 1, with nothing of its own, calls GETATTR while session 0 holds
+    retirable ROOT/CREATE: success after exactly one RETIRE (session 0's);
+  - with nothing retirable anywhere: ENOSPC, no native bytes;
+  - the same, with the caller's own retirable GETATTR.
+- `TestControlledReceivedActualTicketPackageRetirement` runs the same cases
+  for one VIEW_ACQUIRE ticket.
+
+Proof:
+- **Red first:**
+  - on the unchanged series, the first single-session request case failed
+    with `C6 PACKAGE_REQUEST session0 ... = -28 want0`;
+  - on the first 6m4 commit (`e3fcd13`), the cross-session cases failed with
+    `C6 PACKAGE_REQUEST session1 ... = -28 want0` and
+    `C6 PACKAGE_TICKET session1 = -28 want0`, for both feature sets.
+- **Green:** `package` passes (185 s for the two tests).
+- **Other harnesses:** `tests/controlled`, `setattr`, `requests`,
+  `mount_hello`, `capture`, `view`, `dirty`, `reclaim`, `root` and
+  `transport` pass. Shims were added for `hfs_retire_shared`,
+  `budget_users` and `hfs_budget_wait` in `controlled`, `mount_hello` and
+  `capture`.
+- **Not run:**
+  - the guest kernel compile (the r22 candidate build does it);
+  - `controlled_provider`, `mapped`.
+
+Not covered: unretired view tickets are still offered for retirement only
+from recall cleanup and BLOCKED re-sends. While no recall runs (xf4
+advances, vj4 self admissions), they stay charged until a retirement path
+reaches them.
+

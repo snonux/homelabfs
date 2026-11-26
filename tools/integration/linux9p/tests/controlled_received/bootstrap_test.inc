@@ -3,7 +3,7 @@
  * failure. The disposable child preserves that permanent owner without changing
  * the parent's separate, successful runtime fixture. No native bytes are sent.
  */
-static spinlock_t hfs_sessions_lock=PTHREAD_MUTEX_INITIALIZER;
+/* hfs_sessions_lock is defined in consumer.c (6m4). */
 static unsigned primitive_retained_modules;
 #define __module_get(owner) ((void)(owner),primitive_retained_modules++)
 #define ERR_PTR(error) ((void *)(intptr_t)(error))
