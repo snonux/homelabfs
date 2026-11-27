@@ -224,6 +224,20 @@ Their historical receipts are unchanged and must not be treated as allocation
 measurements. The `vz3` development builder instead sums `st_blocks * 512` for
 the owned root and every owned file, directory and symlink; filesystem metadata
 outside those entries is excluded. The new input receipt records that measure.
+`--module-objects` builds two passes. The module pass (`9P_FS=m`) cannot
+select `9P_FS_HOMELABFS_CONTROLLED`, which needs `9P_FS=y` and
+`NET_9P_VIRTIO=y`, so since `dn4` a second, built-in pass in its own
+`O=<output>/controlled` directory enables `CONTROLLED` and compiles `fs/9p/`
+and `net/9p/` again (stages `controlled-*`). That pass covers
+`hfs_controlled.c`, the other controlled-only objects and every
+`CONFIG_9P_FS_HOMELABFS_CONTROLLED` branch. It refuses on any `warning:` line
+in its object log and on any missing controlled object. The module pass, its
+`.config`, its object hashes and the `--kernel-headers` tree are unchanged. Its
+objects appear in the receipt as `controlled/...` artifacts beside
+`controlled_config_sha256` (null without `--module-objects`). The operator key
+stays empty: this is a compile check, not the candidate kernel configuration
+(`tools/integration/artifacts/kernel.py`). `test_build.py` (plain `python3
+tools/integration/linux9p/test_build.py`) pins both passes' config argv.
 The output receipt identifies config, commands,
 tool versions and object hashes. It compiles and combines kernel objects;
 it does **not** perform complete module modpost/link, build a bootable kernel,
