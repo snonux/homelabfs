@@ -1,0 +1,16 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+Packages Altered:
+    Upgrade  rsync-3.2.7-4.el9_9.x86_64     @baseos
+    Upgraded rsync-3.2.7-1.el9_8.x86_64     @@System
+    Upgrade  libgs-9.54.0-20.el9_9.1.x86_64 @appstream
+    Upgraded libgs-9.54.0-19.el9_8.3.x86_64 @@System
+== needs-restarting
+No core libraries or services have been updated since boot-up.
+Reboot should not be necessary.
+rc=0
+== systemd
+running
+IDX BOOT ID                          FIRST ENTRY                 LAST ENTRY
+  0 971d3010d7c64b0e88555e0a9b5fb6d9 Fri 2026-11-27 08:55:35 EET Fri 2026-11-27 16:52:21 EET
