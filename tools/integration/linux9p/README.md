@@ -3433,8 +3433,10 @@ the state JSON in its free pages. Four full copies were decoded read-only
   tickets beside the base, so the 14th charge fails.
   - They were view tickets, not requests: requests are charged to the
     ordinary lane (`hfs_call_control_bytes`).
-  - Ordinary-lane copies: the 13 GRANTED acquisitions (about 348 MB) are why
-    the ordinary rounds at 246.57 s and 294.66 s found 304 MB and 449 MB used.
+  - The 13 GRANTED acquisitions (about 348 MB on the ordinary lane)
+    contributed to the 304 MB and 449 MB the ordinary rounds at 246.57 s
+    and 294.66 s found used (neither reading equals 348 MB: requests and
+    earlier tickets came and went).
 - **Why the host showed 0/0.** The next copy has the acquisition family at
   55 and the release family still at 42, which is the state between the two
   VIEW_RETIREs of one cleanup round. The current state has both at 55 with
@@ -3533,6 +3535,12 @@ the state JSON in its free pages. Four full copies were decoded read-only
     BLOCKED. With gn4's clause put back it fails `answered release beside
     the same credentials' active lease: {…"status":"BLOCKED"}`. Without the
     per-ticket clause it fails `retired the active lease's acquisition`.
+  - `TestSharedLeaseAcquisitionWaitsForLastHolder` (viewcontrol, review
+    round 1): two acquisitions share one DOMAIN READ lease. After the first
+    holder's release its answered release retires, but its acquisition stays
+    BLOCKED until the last holder released; then both acquisitions retire.
+    Without the per-ticket clause it fails `retired the first acquisition
+    while the shared lease is active`.
   - `TestFactsRetireIsPerTicket` replaces `TestFactsRetireIsPerCredentials`.
     On gn4's rule it failed for the answered release and for the released
     acquisition (`WOULD_BLOCK … want held false`). It also checks that the
@@ -3583,8 +3591,10 @@ Not covered:
 - The 178 MB permanent control base is still not decoded byte by byte.
 - The harness has no second credential set in one fixture session. The
   per-ticket rule's other-credentials behaviour is covered by Go tests.
-- The r26 candidate needs the daemon rebuilt (the fix). The guest patches
-  changed in comments only. The candidate pins the kernel source, so the
-  kernel is rebuilt too, with no change in behaviour. The exporter and the
-  fdescfs window are unchanged.
+- The r26 candidate needs the daemon rebuilt (the fix) and the fdescfs
+  window artifacts rebuilt and repinned (`docs/lab/zq3-fdescfs-window/pins.json`):
+  the window test binary is `internal/controlledruntime` itself, which links
+  `internal/viewcontrol`, and hp4 changes both. The guest patches changed in
+  comments only; the candidate pins the patch source, so the kernel is
+  rebuilt too, with no change in behaviour. The exporter is reused.
 

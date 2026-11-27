@@ -305,10 +305,12 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 // lease asynchronously, often only after the process's next observation
 // has acquired its own, so a lease of T1's credentials was active whenever
 // they arrived, and its 13 answered VIEW_RELEASE tickets filled m0's
-// control lane. The range is every
-// ticket of the retired family (scope, anchor, nonce, credentials) numbered
-// up to through; those at or below the floor were checked when it moved.
-// An open dirty reservation still refuses domain-wide.
+// control lane.
+//
+// The checked range is every ledger ticket of the retired family (scope,
+// anchor, nonce, credentials) numbered up to through; tickets at or below
+// the floor were checked when the floor moved. An open dirty reservation
+// still refuses domain-wide.
 func (l factsLedger) checkRetire(scope guestbridge.Context, raw json.RawMessage) error {
 	var r struct {
 		Anchor, Nonce string
