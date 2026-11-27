@@ -237,7 +237,12 @@ objects appear in the receipt as `controlled/...` artifacts beside
 `controlled_config_sha256` (null without `--module-objects`). The operator key
 stays empty: this is a compile check, not the candidate kernel configuration
 (`tools/integration/artifacts/kernel.py`). `test_build.py` (plain `python3
-tools/integration/linux9p/test_build.py`) pins both passes' config argv.
+tools/integration/linux9p/test_build.py`) pins both passes' config argv and,
+with a fake kernel tree and fake processes (no make, compiler or Linux
+source), the controlled pass's refusals (missing `CONTROLLED` symbol,
+warnings, missing objects) and `controlled/` artifact keys, plus `main()`'s
+refusals, stage names and argv, and its inputs, config-binding, stages and
+receipt files. It does not exercise the RSS/disk/time limit kill path.
 The output receipt identifies config, commands,
 tool versions and object hashes. It compiles and combines kernel objects;
 it does **not** perform complete module modpost/link, build a bootable kernel,
