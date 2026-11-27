@@ -117,10 +117,14 @@ void hfs_session_mark_blocked(struct hfs_session *);
 void actual_hfs_session_block(struct hfs_session *,const char *,const char *,int);
 static int test_received_source_ex(struct hfs_session *,const struct hfs_json *,int,bool *);
 /* ch4: the actual hfs_lease_acquire_ex (renamed actual_hfs_lease_acquire_ex)
- * runs with its release state (hfs_lease_own) as a test.c fixture.
+ * runs with its release state (hfs_lease_own) as a test.c fixture. gn4:
+ * hfs_lease_own takes over the control release ticket that
+ * hfs_lease_acquire_ex prepared before the VIEW_ACQUIRE.
  */
 struct hfs_lease;
-static int hfs_lease_own(struct hfs_session *,const struct hfs_cred *,const struct hfs_cap *,struct hfs_lease *);
+struct hfs_view_ticket;
+static int hfs_lease_own(const struct hfs_cred *,const struct hfs_cap *,struct hfs_view_ticket **,
+                         struct hfs_lease *);
 int actual_hfs_lease_acquire_ex(struct hfs_session *,const struct hfs_cred *,const struct hfs_cap *,
                                 const struct hfs_cap *,u64,bool,const struct hfs_buf *,bool,
                                 struct hfs_lease **,bool *);
