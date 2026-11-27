@@ -83,12 +83,12 @@ class ControllerPlanTests(unittest.TestCase):
         return plan
 
     def test_only_the_admitted_candidate_carries_s64(self):
-        # The r24 rebuild carries s64 in all three parts and is the one
+        # The r25 rebuild carries s64 in all three parts and is the one
         # FD_ATTR digest. Every superseded candidate refuses: the second r21
-        # rebuild f21450ec, the r22 rebuild 2c85b230 and the r23 rebuild
-        # 21c49a55 carried s64 but are superseded (R21-1, R22-1, R23-1), and
-        # every older one (the first r21 rebuild 1428d4db included) predates
-        # s64.
+        # rebuild f21450ec, the r22 rebuild 2c85b230, the r23 rebuild
+        # 21c49a55 and the r24 rebuild c9500232 carried s64 but are
+        # superseded (R21-1, R22-1, R23-1, R24-1), and every older one (the
+        # first r21 rebuild 1428d4db included) predates s64.
         self.assertEqual(controller.FD_ATTR, frozenset({ADMITTED}))
         self.assertTrue(controller.FD_ATTR <= controller.ADMITTED)
         controller.require_fd_attr(ADMITTED)
@@ -371,13 +371,13 @@ class BootstrapPlanTests(test_bootstrap.Case):
     def test_pre_s64_candidate_refuses_before_launch(self):
         # ADMITTED is in FD_ATTR now; with FD_ATTR emptied it stands for an
         # admitted pre-s64 candidate, next to the superseded pre-s64
-        # 1428d4db (SUPERSEDED[-4]; the last three entries, f21450ec,
-        # 2c85b230 and 21c49a55, have s64).
+        # 1428d4db (SUPERSEDED[-5]; the last four entries, f21450ec,
+        # 2c85b230, 21c49a55 and c9500232, have s64).
         with mock.patch.object(test_bootstrap.bootstrap.controller, "FD_ATTR", frozenset()):
             self.pre_s64_candidates_refuse()
 
     def pre_s64_candidates_refuse(self):
-        for number, value in enumerate([ADMITTED, SUPERSEDED[-4], "a" * 64, "nothex"]):
+        for number, value in enumerate([ADMITTED, SUPERSEDED[-5], "a" * 64, "nothex"]):
             with self.subTest(value=value):
                 root = self.root / str(number)
                 root.mkdir()

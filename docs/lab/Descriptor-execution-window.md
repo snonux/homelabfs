@@ -242,18 +242,24 @@ rebuilt only the guest kernel (6m4) and reused that daemon, so these
 artifacts and their pins stayed unchanged. The r23 rebuild for zq3-r23
 (`21c49a55…`, 2026-11-26) rebuilt them from `21d8478`: km4 changed
 `internal/controlledruntime` (the test binary itself) and
-`internal/viewcontrol`, which it links, so the test binary is now
-`d58fedc4…` and the cross-built daemon equals the new candidate daemon
-`43238fe9…`. The helper `6d54858c…` differs only in DWARF (the new
-out_dir); stripped it is still `7872b1b4…`. The r24 rebuild for zq3-r24
+`internal/viewcontrol`, which it links, so the test binary became
+`d58fedc4…` and the cross-built daemon equalled the then candidate daemon
+`43238fe9…`. The helper `6d54858c…` differed only in DWARF (the new
+out_dir); stripped it was still `7872b1b4…`. The r24 rebuild for zq3-r24
 (`c9500232…`, 2026-11-27) rebuilt only the guest kernel (9n4) and reused that
-daemon `43238fe9…`, so these artifacts and their pins are unchanged.
+daemon `43238fe9…`, so these artifacts and their pins stayed unchanged.
+The r25 rebuild for zq3-r25 (`a3eac923…`, 2026-11-27) rebuilt them from
+`e9ae706`: gn4 changed `internal/controlledruntime` and
+`internal/viewcontrol` again, so the test binary is now `29e9e160…` and the
+cross-built daemon equals the new candidate daemon `43414d7f…`. The helper
+`2202e6b5…` differs only in DWARF (the new out_dir); stripped it is still
+`7872b1b4…`.
 Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
 
 **Rebuilt artifacts.** [`build-fdescfs-window-artifacts.sh`](../../tools/lab/build-fdescfs-window-artifacts.sh)
-exports the selected commit (now `3081d31`) as a source archive and builds each artifact twice with
+exports the selected commit (now `e9ae706`) as a source archive and builds each artifact twice with
 fresh Go caches, using the pinned clang cross wrapper, the captured f3 sysroot
 (`c16fdc1c…`) and the candidate daemon's Go environment. Both builds were
 byte-identical. As a toolchain cross-check the same recipe reproduced the

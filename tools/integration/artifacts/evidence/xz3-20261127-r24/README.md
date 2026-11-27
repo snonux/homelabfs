@@ -1,5 +1,21 @@
 # xz3 r24 rebuild (2026-11-27): 9n4 retry after a concurrent retire round
 
+**Superseded on 2026-11-27** by the [r25 rebuild](../xz3-20261127-r25/README.md)
+(`a3eac923…`, source `e9ae706`) for zq3-r25. zq3-r24 ran this candidate on
+2026-11-27, and T1 failed with
+[R24-1](../../../../../docs/lab/results/20261127-zq3-r24/README.md). The
+1024-group access child's open failed with ENOSPC again. The 9n4 retry ran
+but could not help: m0's control lane was 98% full of released but
+unretired VIEW_RELEASE tickets, which no retire round offered. The failing
+charge was a release ticket charged after its VIEW_ACQUIRE was granted. It
+stranded a host lease, and this candidate's daemon `43238fe9…` then refused
+every later VIEW_RETIRE of m0 domain-wide. gn4 fixed both sides, so r25
+rebuilt the guest kernel and the daemon with the window artifacts, and
+reused only this candidate's exporter `8cadae40…` byte for byte. The
+tooling now refuses this manifest as superseded, and `FD_ATTR` holds
+`a3eac923…` instead. This manifest still passes `package.py check` and
+`admit.py` under the `e9ae706` tooling.
+
 This candidate supersedes the [r23 rebuild](../xz3-20261126-r23/README.md)
 (`21c49a55…`, source `21d8478`). zq3-r23 ran it on 2026-11-27.
 [R23-1](../../../../../docs/lab/results/20261127-zq3-r23/README.md) stopped

@@ -1,0 +1,424 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the worker worktree at e9ae706 (/home/paul/git/homelabfs/.claude/worktrees/agent-a202fe5cfdf535a4e; main after the gn4 merge, no edits before assembly). The daemon was rebuilt there, so the repository baseline is e9ae706 and there is no inputs/repository-changes.patch. The daemon builder bindings name this worktree; the three native proof records are the second r21 f3 build's, byte for byte; every other binding is a hash",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "a3eac923d2b8713a3252b1b95cfe0294a6326bbc298de9d67e81b7ed8ed5e5b9",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261127-r25/package",
+    "repository_baseline": "e9ae70640a3de428c1626886469f6f2e0fc69d61",
+    "repository_changes_patch_sha256": null,
+    "source_checkout": "e9ae70640a3de428c1626886469f6f2e0fc69d61"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "builds": {
+      "clean_repro": {
+        "both_forced_rebuilds": true,
+        "equal": true,
+        "first_sha256": "43414d7fff7e1ee396d1e7ff7dfb27be7b4586e6a6270850ad20e106344ace17",
+        "repository": "e9ae70640a3de428c1626886469f6f2e0fc69d61",
+        "second_sha256": "43414d7fff7e1ee396d1e7ff7dfb27be7b4586e6a6270850ad20e106344ace17",
+        "version": "homelabfs-daemon-clean-repro/1"
+      },
+      "first_output": "/home/paul/tmp/claude/hfs-xz3-20261127-r25/daemon-first",
+      "second_output": "/home/paul/tmp/claude/hfs-xz3-20261127-r25/daemon-repro",
+      "steps": [
+        [
+          "prepare",
+          "0",
+          "6"
+        ],
+        [
+          "build-first",
+          "0",
+          "60"
+        ],
+        [
+          "build-second",
+          "0",
+          "53"
+        ]
+      ],
+      "window_cross_check": {
+        "artifact": "hfs-controlled-runtime",
+        "candidate_manifest_sha256": "43414d7fff7e1ee396d1e7ff7dfb27be7b4586e6a6270850ad20e106344ace17",
+        "equal": true,
+        "rebuilt_sha256": "43414d7fff7e1ee396d1e7ff7dfb27be7b4586e6a6270850ad20e106344ace17"
+      }
+    },
+    "bytes": 11937312,
+    "changes": "gn4 host (internal/controlledruntime/facts.go and internal/viewcontrol/retirement.go, zq3-r24 R24-1): Facts.checkRetire refuses a VIEW_RETIRE for an active lease only when the lease has the retiring family's credentials (viewcontrol.CredentialDigest), matching the controller's retirementBlocked; open reservations still refuse domain-wide; before, the domain-wide refusal answered every later VIEW_RETIRE of m0 BLOCKED once a lease was stranded; on top of the km4 daemon 43238fe9",
+    "gnu_build_id": "d8289ecbe3f89f8403889e64b11ea46ab2f6c24c",
+    "module_cache": "seeded from the r23 daemon cache (go.mod/go.sum unchanged since 3081d31); nothing downloaded",
+    "native_qualification": "new bytes: not checked on f3 yet; the zq3-r25 Phase 4 step 1a (--check-process-observer under the bounded host guard) must qualify them (43238fe9 passed it in zq3-r23 and zq3-r24)",
+    "repository": "e9ae70640a3de428c1626886469f6f2e0fc69d61",
+    "reused": false,
+    "sha256": "43414d7fff7e1ee396d1e7ff7dfb27be7b4586e6a6270850ad20e106344ace17",
+    "superseded_sha256": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+    "toolchain": "go1.27.4-X:nodwarf5 (Fedora 45), pinned in daemon.py GO_RELEASE by 3081d31, as for 43238fe9 and c7b89648"
+  },
+  "fd_attr": "in controller.FD_ATTR in place of c9500232: the kernel keeps s64 (patch 0003), the exporter is the s64 one of c9500232, and the daemon keeps s64 host (gn4 touched only the retirement refusal)",
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c (built with go1.26.10)",
+    "reason": "not in the package; cmd/homelabfs links neither internal/controlledruntime nor internal/viewcontrol (go list -deps), the only Go packages gn4 changed"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "b68cf94aea6ab1f7f8599a1ba229951d4be1b1c4d8272dc4b9ce20f964828f17",
+      "linux/System.map": "d1ec01e8b86ef9fe954494095d866eef7e92e192f6e09e5f9a85c9e17ab12cb0",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "d4117c959fdce0fb23db35078fb72850f8d3ae78dac12ebc605847a7bade8994",
+      "linux/build.json": "643547cd573d0a34929c765d705d66cbf5186e876cc19894d9ca941769387248",
+      "linux/bzImage": "ee650e63a86ac0b60ca4fd564a095cf61ba333adbd773a91c0471e296d37cd56",
+      "linux/clean-repro.json": "acd571c6234e5ff668ac3c2407f9b387f1de6597cbf8e0d0649273165e8bb2bd",
+      "linux/config": "692ed3fa048ec59704f554e3ddcea11b66e3f420e23489022b25387302fc1f6c",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "c416af7e45f64fef661e736d87258dd9531e2012574e5023664129280d726731"
+    },
+    "changed_from_c9500232": [
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "changes": "gn4 (patches 0003 and 0004 and source.json, zq3-r24 R24-1): hfs_lease_acquire_ex prepares the lease's control release ticket before the VIEW_ACQUIRE is sent and hfs_lease_own takes it over, so a full control lane refuses the acquisition with no host lease; hfs_retire_shared also runs hfs_view_retire on the caller's session (the round line gains \"view retire <errno>\") and a retry that fails again is logged; view rounds that advanced a floor advance the 9n4 generation; on top of the 9n4 kernel 8ce8bd6e",
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "acd571c6234e5ff668ac3c2407f9b387f1de6597cbf8e0d0649273165e8bb2bd",
+    "config_equals_c9500232": true,
+    "gnu_build_id": "8c70915f500e10b7e15f87f0d47e03470bd72bfa",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "module_symvers": {
+      "added": [],
+      "changed_crc": [],
+      "imported_by_packaged_modules": [],
+      "removed": []
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/claude/c64-config/linux-pinned.tar.gz (link to the cached archive, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261127-r25/linux-source",
+      "prepared_from_commit": "e9ae706 (main after the gn4 merge)",
+      "source_inventory_sha256": "a8032a07b4ff78f94a19defe6751276cbf5ddfcf03140f0f2f4f53842f3bbd7b"
+    },
+    "source_suites": {
+      "commands": "transport, mount_hello, view, view --pressure, setattr, codec, cursor, policy, tag, root and reclaim with --sanitize; capture, requests and huge; dirty with docs/spec/retained9p-fixtures/views.json (compiles again since 6490546); controlled (budget root suites/; build.py 60 s compile bound held, no retry); build.py --module-objects (object-check) and controlled_provider against it with internal/controlledruntime/testdata/guest-artifacts.json, both with the run root as budget root (73 PASS lines); controlled_received --scenario both (all 21 scenarios, package with gn4's TestControlledReceivedActualControlLaneRetirement and the r24 round in TicketPackageRetirement; host tree the worker worktree); view --pressure failed to compile (rc 1): its hfs_lease_own fixture in tests/pressure keeps the pre-gn4 (session, cred, description, lease) signature, a harness defect on main since gn4; a private copy (pressure-probe/ in the run root) with hfs_lease_own, hfs_view_ticket_prepare and hfs_view_ticket_put adapted to gn4 compiled and passed with --sanitize against the same tree; controlled_crypto and mapped not run; run alongside the kernel builds",
+      "results": [
+        [
+          "transport",
+          "0",
+          "7"
+        ],
+        [
+          "mount_hello",
+          "0",
+          "10"
+        ],
+        [
+          "view",
+          "0",
+          "10"
+        ],
+        [
+          "view-pressure",
+          "1",
+          "2"
+        ],
+        [
+          "setattr",
+          "0",
+          "3"
+        ],
+        [
+          "capture",
+          "0",
+          "5"
+        ],
+        [
+          "codec",
+          "0",
+          "2"
+        ],
+        [
+          "cursor",
+          "0",
+          "1"
+        ],
+        [
+          "policy",
+          "0",
+          "3"
+        ],
+        [
+          "tag",
+          "0",
+          "2"
+        ],
+        [
+          "requests",
+          "0",
+          "3"
+        ],
+        [
+          "root",
+          "0",
+          "3"
+        ],
+        [
+          "huge",
+          "0",
+          "0"
+        ],
+        [
+          "reclaim",
+          "0",
+          "7"
+        ],
+        [
+          "dirty",
+          "0",
+          "3"
+        ],
+        [
+          "controlled",
+          "0",
+          "94"
+        ],
+        [
+          "object-check",
+          "0",
+          "136"
+        ],
+        [
+          "controlled-provider",
+          "0",
+          "59"
+        ],
+        [
+          "cr-both",
+          "0",
+          "2036"
+        ]
+      ],
+      "source": "/home/paul/tmp/claude/hfs-xz3-20261127-r25/linux-source",
+      "toolchain": "Fedora 45: go1.27.4 for the host go test -race stages, gcc 16.2.1 (fc45) for the guest harness"
+    },
+    "stage_seconds": [
+      [
+        "prepare",
+        "0",
+        "86"
+      ],
+      [
+        "first",
+        "configure",
+        "0",
+        "32"
+      ],
+      [
+        "first",
+        "vmlinux",
+        "0",
+        "990"
+      ],
+      [
+        "first",
+        "image-modules",
+        "0",
+        "31"
+      ],
+      [
+        "first",
+        "collect",
+        "0",
+        "7"
+      ],
+      [
+        "repro",
+        "configure",
+        "0",
+        "9"
+      ],
+      [
+        "repro",
+        "vmlinux",
+        "0",
+        "986"
+      ],
+      [
+        "repro",
+        "image-modules",
+        "0",
+        "25"
+      ],
+      [
+        "repro",
+        "collect",
+        "0",
+        "7"
+      ],
+      [
+        "abi-collect both",
+        "0"
+      ],
+      [
+        "compare-repro (same O, after abi collect on both)",
+        "0"
+      ],
+      [
+        "abi-negative",
+        "0"
+      ]
+    ],
+    "superseded_gnu_build_id": "8ce8bd6e4c69794f9fb1264b75d59b8519366200",
+    "timeouts_and_resumes": "kernel.py bounds every make at 1190 s. No stage reached it: the first vmlinux took 990 s and the repro vmlinux 986 s, so no stage was resumed. The driver would have waited until no process used the O path and resumed a timed-out stage on the same O tree (at most twice); that path never ran. Every stage ran under a user systemd scope with the r17 40-minute bound",
+    "unchanged_from_c9500232": [
+      "linux/Module.symvers",
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "native_exporter": {
+    "exporter_sha256": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4",
+    "files": 88,
+    "guard_recipe_sha256": "34ddf37c98e4f634ada902fed708ec9dc3ec49baa3ec1f764017d0140d49b2ea",
+    "proof_records_sha256": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "2a946efe056ed466fb85a6bb207ad02bfe65f416897f88e442b626719fa0556f",
+      "native-final-source-and-first-seal.json": "5826c16b0c4ccafe756dcfd40098839285d2039cfd5e489a8ea7b96ae9f3420a"
+    },
+    "rebuilt": false,
+    "records": "the second r21 f3 build's (tools/integration/artifacts/evidence/xz3-20261125-r21/native-build-records.json), copied byte for byte from its run root",
+    "why": "no owned lib9p input changed since 3081d31 (git diff 3081d31 e9ae706 -- tools/integration/lib9p is empty, and stage-package.py checked the packaged owned inputs against the repository) and native_guard.py is unchanged (34ddf37c)"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "exporter execution",
+    "VM execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "f3 observer qualification of the new daemon",
+    "a working hfs1.4 mount on Rocky with this kernel (zq3)"
+  ],
+  "planned_run_day": "2026-11-27 (the 20261127 in the directory and evidence names; the run day is not fixed)",
+  "reason": "zq3-r24 ran c9500232 on 2026-11-27 and T1 failed with R24-1: the 1024-group access child's open failed ENOSPC with m0's control lane at 526456646 of 536870912 bytes, held by released but unretired VIEW_RELEASE tickets; the failing charge was child 3's release ticket after its VIEW_ACQUIRE was granted, which stranded an active host lease, and the km4 daemon's domain-wide checkRetire then answered every later VIEW_RETIRE of m0 BLOCKED; gn4 (merged e9ae706) charges the release ticket before the grant, retires view tickets under charge pressure in the guest, and makes the host check per credential",
+  "recorded": "2026-11-27",
+  "reused": {
+    "checked_against_current_source": 26,
+    "daemon_files": 0,
+    "from_manifest": "c9500232792012a2131063fea7ad992c1115a5904a83aa0ba4c4815acce7670c",
+    "linux_files": 26,
+    "list": "reused-files.json",
+    "native_files": 88,
+    "previous_still_admits": "package.py check and a full admit.py of c9500232 pass under the e9ae706 tooling (receipts r24-container, r24-readmit)"
+  },
+  "runtimeprep_spec": "internal/runtimeprep/testdata/zq3-spec.json and tools/lab/directlaunch/argv.py keep the exporter 8cadae40; it is unchanged",
+  "superseded_candidate": {
+    "manifest_sha256": "c9500232792012a2131063fea7ad992c1115a5904a83aa0ba4c4815acce7670c",
+    "status": "refused as superseded; ran in zq3-r24, where T1 failed with R24-1 (the 1024-group child's release ticket failed its charge on a full control lane after the grant, stranding a host lease, and the km4 daemon 43238fe9's domain-wide checkRetire then refused every later VIEW_RETIRE of m0)"
+  },
+  "task": "r25 rebuild: xz3 rebuild for zq3-r25 (gn4 guest kernel and CGO daemon with the window artifacts rebuilt at e9ae706; the s64/hh4 native exporter reused byte for byte from c9500232)",
+  "toolchain": "Fedora 45, as for c9500232 and f21450ec: binutils 2.47, gcc 16.2.1 (fc45 build) for the kernel; golang 1.27.4 (go1.27.4-X:nodwarf5) and clang 23 for the daemon, the window artifacts and the host go test -race stages",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "artifacts": {
+      "controlledruntime.test": "29e9e160096c2dd422559105c0f6e8e11511d334e514d340a36948f39f037ebe",
+      "fdescfs-namespace": "2202e6b5a7977889ba8dcc31769ae273bb99506a2052a4edb33fd3a78c9d66cb",
+      "hfs-controlled-runtime": "43414d7fff7e1ee396d1e7ff7dfb27be7b4586e6a6270850ad20e106344ace17"
+    },
+    "helper_stripped_sha256": "7872b1b44860615e3cf16d394bc9b72e3ba25e79cd9630d377be46988a1b7971",
+    "recipe_sha256": "2b1bd4a9b82543e740030d96b8f25784e2744c8bc1c0fae1d5a244e44246aeee",
+    "reused": false,
+    "source": "e9ae70640a3de428c1626886469f6f2e0fc69d61",
+    "why": "the window test binary is internal/controlledruntime itself and links internal/viewcontrol (go list -test -deps ./internal/controlledruntime with GOOS=freebsd), both changed by gn4, and the inspector is the daemon; both window builds were byte-identical and reproduced the candidate daemon. fdescfs-namespace.c and the toolchain are unchanged; the helper differs from the 21d8478 build only in DWARF (the new out_dir as comp_dir): with llvm-objcopy --strip-debug it is the same 7872b1b4..."
+  },
+  "workstation_tools": "hfs-runtime-prep and the signer hfs-retained9p-operator are not package content but link internal/viewcontrol and internal/controlledruntime (go list -deps), which gn4 changed; the zq3-r25 fill must rebuild both at its own commit (go1.27.4)"
+}
