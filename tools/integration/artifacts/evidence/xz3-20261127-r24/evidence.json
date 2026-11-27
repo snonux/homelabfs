@@ -1,0 +1,394 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the worker worktree at f6119d5 (/home/paul/git/homelabfs/.claude/worktrees/agent-a44043e556313f522; main after the 9n4 merge, no edits before assembly). assemble.py takes the repository baseline from the reused daemon's build record, so it is 21d8478, and inputs/repository-changes.patch records the diff since then over assemble.py's tracked list (patch 0004 and source.json; patches 0003 and 0005 are pinned elsewhere in the package). The daemon builder bindings were re-keyed from the r23 worktree to this one after both recipes hashed to the bound values; the three native proof records are the second r21 f3 build's, byte for byte; every other binding is a hash",
+    "files": 195,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "c9500232792012a2131063fea7ad992c1115a5904a83aa0ba4c4815acce7670c",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261127-r24/package",
+    "repository_baseline": "21d84783fccfc85a00a9b3c365b0cff0e73e627b",
+    "repository_changes_patch_sha256": "008364d6312be386f46a32a4a63565f8ef85b8bdfeb2d05e5e5f37804a191d61",
+    "source_checkout": "f6119d5929d35e70cdcbcf91fa096ec6403c0bcd"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "bindings": "the r23 bindings named the r23 worktree; re-keyed to the r24 worktree after both recipes there hashed to the bound values; originals kept in daemon-binding-origin/",
+    "bytes": 11936344,
+    "clean_repro": {
+      "both_forced_rebuilds": true,
+      "equal": true,
+      "first_sha256": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+      "repository": "21d84783fccfc85a00a9b3c365b0cff0e73e627b",
+      "second_sha256": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+      "version": "homelabfs-daemon-clean-repro/1"
+    },
+    "gnu_build_id": "0b1b3d2d0a74029b984994da505d0f8805769ffe",
+    "native_qualification": "passed --check-process-observer under the bounded host guard on f3 in zq3-r23 (Phase 4 step 1a; docs/lab/results/20261127-zq3-r23); every run repeats the check",
+    "repository": "21d84783fccfc85a00a9b3c365b0cff0e73e627b",
+    "reused": true,
+    "sha256": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255",
+    "why": "no Go file, go.mod or go.sum changed since 21d8478 (git diff 21d8478 f6119d5 -- internal cmd go.mod go.sum touches only internal/guestbridge/README.md), and daemon.py/daemon_cgo.py are unchanged"
+  },
+  "fd_attr": "in controller.FD_ATTR in place of 21c49a55: the kernel keeps s64 (patch 0003), and the exporter and daemon are the s64 ones of 21c49a55",
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c (built with go1.26.10)",
+    "reason": "not in the package, and no Go source changed since 21d8478"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "b68cf94aea6ab1f7f8599a1ba229951d4be1b1c4d8272dc4b9ce20f964828f17",
+      "linux/System.map": "5a455b45ec5957a55488e58d946cd92cfae86db7d04e8a1beed304070a5fc65a",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "6ecdf91a7418eef7539162bf8f79b2234924905165d1a8bb1a5e585052458558",
+      "linux/build.json": "a306f1d815f71e6de9a1d29addb7554ecc011c85ef0b45ceb232cd7dcd36cb0d",
+      "linux/bzImage": "0a384db7fb48e4212384b3dfeae2f7e23dde542805aac312b6c45026d3c4af9a",
+      "linux/clean-repro.json": "7f3e7d728ef4e6321744973f2ba24e85336638494d87ef2ba0c8fa1e8ab132cc",
+      "linux/config": "692ed3fa048ec59704f554e3ddcea11b66e3f420e23489022b25387302fc1f6c",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "595941c69bd38b372a6a7bbd8a804492281a117a2219f6ae0db9c4270b6dfe33"
+    },
+    "changed_from_21c49a55": [
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "changes": "9n4 (patches 0003, 0004 and 0005 and source.json, zq3-r23 R23-1): hfs_retire advances a global retirement generation (hfs_retired_rounds) after each round that freed requests; hfs_call_reserve and hfs_view_ticket_charge read it (hfs_retire_generation) before their first attempt and pass it with their lane to hfs_retire_shared(session, control, since), which also returns 0 (the one retry, still bounded) when its own round freed nothing but the generation moved; the km4 line names the lane, records the lane usage with the controlled provider (hfs_controlled_lane_usage) and has the outcome \"a concurrent round freed requests, retrying the charge once\"; on top of the 21c49a55 kernel 2435216f",
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "7f3e7d728ef4e6321744973f2ba24e85336638494d87ef2ba0c8fa1e8ab132cc",
+    "config_equals_21c49a55": true,
+    "gnu_build_id": "8ce8bd6e4c69794f9fb1264b75d59b8519366200",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "module_symvers": {
+      "added": [],
+      "changed_crc": [],
+      "imported_by_packaged_modules": [],
+      "removed": []
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/claude/c64-config/linux-pinned.tar.gz (link to the cached archive, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261127-r24/linux-source",
+      "prepared_from_commit": "f6119d5 (main after the 9n4 merge)",
+      "source_inventory_sha256": "aabdce95d0dea971bdd02551e074003899049c72a333574d522e75937ebc9bf3"
+    },
+    "source_suites": {
+      "commands": "transport, mount_hello, view, view --pressure, setattr, codec, cursor, policy, tag, root and reclaim with --sanitize; capture, requests and huge; dirty with docs/spec/retained9p-fixtures/views.json; controlled (budget root suites/); build.py --module-objects (object-check) and controlled_provider against it (budget root the run root, 73 PASS lines); controlled_received --scenario both (all 21 scenarios, 9n4's BusyRetirementRetry in package included; host tree the worker worktree); controlled_crypto and mapped not run; run alongside the kernel builds",
+      "dirty_failure": "dirty failed to compile (rc 1): it builds its compat.h from tests/requests/compat.h, where 9n4 added \"static atomic_int hfs_retired_rounds;\", which dirty's test.c and its compiled sources (hfs_protocol.c, hfs_policy.c) never use, so -Werror=unused-variable stops the compile. A harness defect on main since 9n4 (9n4 did not run dirty), not a kernel defect. A private copy of the dirty, requests, codec, policy and common harnesses in dirty-probe/ with only that line marked __attribute__((unused)) compiled and passed against the same prepared tree (both PASS lines, exit 0); the repository harness is unchanged",
+      "results": [
+        [
+          "transport",
+          "0",
+          "2"
+        ],
+        [
+          "mount_hello",
+          "0",
+          "2"
+        ],
+        [
+          "view",
+          "0",
+          "3"
+        ],
+        [
+          "view-pressure",
+          "0",
+          "6"
+        ],
+        [
+          "setattr",
+          "0",
+          "2"
+        ],
+        [
+          "capture",
+          "0",
+          "3"
+        ],
+        [
+          "codec",
+          "0",
+          "1"
+        ],
+        [
+          "cursor",
+          "0",
+          "1"
+        ],
+        [
+          "policy",
+          "0",
+          "2"
+        ],
+        [
+          "tag",
+          "0",
+          "2"
+        ],
+        [
+          "requests",
+          "0",
+          "2"
+        ],
+        [
+          "root",
+          "0",
+          "1"
+        ],
+        [
+          "huge",
+          "0",
+          "1"
+        ],
+        [
+          "reclaim",
+          "0",
+          "1"
+        ],
+        [
+          "dirty",
+          "1",
+          "3"
+        ],
+        [
+          "controlled",
+          "0",
+          "44"
+        ],
+        [
+          "object-check",
+          "0",
+          "39"
+        ],
+        [
+          "controlled-provider",
+          "0",
+          "22"
+        ],
+        [
+          "cr-both",
+          "0",
+          "1250"
+        ]
+      ],
+      "source": "/home/paul/tmp/claude/hfs-xz3-20261127-r24/linux-source",
+      "toolchain": "Fedora 45: go1.27.4 for the host go test -race stages, gcc 16.2.1 (fc45) for the guest harness"
+    },
+    "stage_seconds": [
+      [
+        "prepare",
+        "0",
+        "22"
+      ],
+      [
+        "first",
+        "configure",
+        "0",
+        "8"
+      ],
+      [
+        "first",
+        "vmlinux",
+        "0",
+        "619"
+      ],
+      [
+        "first",
+        "image-modules",
+        "0",
+        "22"
+      ],
+      [
+        "first",
+        "collect",
+        "0",
+        "5"
+      ],
+      [
+        "repro",
+        "configure",
+        "0",
+        "8"
+      ],
+      [
+        "repro",
+        "vmlinux",
+        "0",
+        "610"
+      ],
+      [
+        "repro",
+        "image-modules",
+        "0",
+        "22"
+      ],
+      [
+        "repro",
+        "collect",
+        "0",
+        "6"
+      ],
+      [
+        "abi-collect both",
+        "0"
+      ],
+      [
+        "compare-repro (same O, after abi collect on both)",
+        "0"
+      ],
+      [
+        "abi-negative",
+        "0"
+      ]
+    ],
+    "superseded_gnu_build_id": "2435216f843bc8a821388e9733549f9969492dbb",
+    "timeouts_and_resumes": "kernel.py bounds every make at 1190 s. No stage reached it: the first vmlinux took 619 s and the repro vmlinux 610 s, so no stage was resumed. The driver would have waited until no process used the O path and resumed a timed-out stage on the same O tree (at most twice); that path never ran. Every stage ran under a user systemd scope with the r17 40-minute bound",
+    "unchanged_from_21c49a55": [
+      "linux/Module.symvers",
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "native_exporter": {
+    "exporter_sha256": "8cadae403dc3f0c7add38f16ec8fae1d00b17c1802f00411896e96fa083aa4d4",
+    "files": 88,
+    "guard_recipe_sha256": "34ddf37c98e4f634ada902fed708ec9dc3ec49baa3ec1f764017d0140d49b2ea",
+    "proof_records_sha256": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "2a946efe056ed466fb85a6bb207ad02bfe65f416897f88e442b626719fa0556f",
+      "native-final-source-and-first-seal.json": "5826c16b0c4ccafe756dcfd40098839285d2039cfd5e489a8ea7b96ae9f3420a"
+    },
+    "rebuilt": false,
+    "records": "the second r21 f3 build's (tools/integration/artifacts/evidence/xz3-20261125-r21/native-build-records.json), copied byte for byte from its run root",
+    "why": "no owned lib9p input changed since 21d8478 (git diff 21d8478 f6119d5 -- tools/integration/lib9p is empty) and native_guard.py is unchanged (34ddf37c)"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "exporter execution",
+    "VM execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky with this kernel (zq3)"
+  ],
+  "planned_run_day": "not set (the 20261127 in the directory and evidence names is the build day)",
+  "reason": "zq3-r23 ran 21c49a55 on 2026-11-27 and T1 failed with R23-1: the 1024-group access child's open(group-tail) failed ENOSPC; its km4 retire round waited out a concurrent round on the same session (hfs_retire's blocking mutex), found nothing left to retire (-11) and failed the charge although the concurrent round had just freed requests; 9n4 (merged f6119d5) fixes it in the guest kernel only",
+  "recorded": "2026-11-27",
+  "reused": {
+    "checked_against_current_source": 25,
+    "daemon_files": 7,
+    "from_manifest": "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3",
+    "linux_files": 25,
+    "list": "reused-files.json",
+    "native_files": 88,
+    "previous_still_admits": "package.py check and a full admit.py of 21c49a55 pass under the f6119d5 tooling (receipts r23-container, r23-readmit)"
+  },
+  "runtimeprep_spec": "internal/runtimeprep/testdata/zq3-spec.json and tools/lab/directlaunch/argv.py keep the exporter 8cadae40; it is unchanged",
+  "superseded_candidate": {
+    "manifest_sha256": "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3",
+    "status": "refused as superseded; ran in zq3-r23, where T1 failed with R23-1 (guest kernel 2435216f without 9n4)"
+  },
+  "task": "r24 rebuild: xz3 rebuild for zq3-r24 (9n4 guest kernel; the 21d8478 km4 CGO daemon, window artifacts and s64/hh4 native exporter reused byte for byte from 21c49a55)",
+  "toolchain": "Fedora 45, as for 21c49a55: binutils 2.47, gcc 16.2.1 (fc45 build) for the kernel; golang 1.27.4 (go1.27.4-X:nodwarf5) for the host go test -race stages. The reused daemon and window artifacts were built with go1.27.4 and clang 23.1.5 at 21d8478",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "artifacts": {
+      "controlledruntime.test": "d58fedc4f74077269802284567d7867e61b155118f5b3b6128a6600e1840946b",
+      "fdescfs-namespace": "6d54858cb71dde6f3aa506e9f00f41178adba69deecf44505e79be6e4181caa2",
+      "hfs-controlled-runtime": "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255"
+    },
+    "recipe_sha256": "64a0fcf85b0419911bd803609f803bbd3c24cbcf37573ea1844eedc1d92f8531",
+    "reused": true,
+    "source": "21d84783fccfc85a00a9b3c365b0cff0e73e627b",
+    "why": "the window test and inspector bytes follow the daemon source and the toolchain, which are unchanged since 21d8478, and fdescfs-namespace.c is unchanged; pins.json stays as it is"
+  },
+  "workstation_tools": "hfs-runtime-prep and the signer hfs-retained9p-operator are not package content; no Go source changed since 21d8478, so the zq3-r23 fill builds stay valid inputs, but the fill rebuilds them at its own commit as every fill does"
+}

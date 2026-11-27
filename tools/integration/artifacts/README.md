@@ -155,6 +155,14 @@ CRC, so `Module.symvers`, the five modules and `abi-negative.json` came out
 byte-identical. km4 also changed the daemon, so it was rebuilt at `21d8478`
 (`43238fe9…`, go1.27.4), which is the repository baseline, and only the
 exporter `8cadae40…` was reused.
+The r24 rebuild for zq3-r24 (candidate `c9500232…`,
+[evidence](evidence/xz3-20261127-r24/README.md)) kept that config too;
+9n4's patches 0003/0004/0005 changed the image (build ID `8ce8bd6e…`) but
+no export CRC, so `Module.symvers`, the five modules and
+`abi-negative.json` again came out byte-identical. It reused the `21d8478`
+daemon `43238fe9…` and the exporter `8cadae40…` byte for byte, so its
+repository baseline is `21d8478` with `inputs/repository-changes.patch`
+(the r16 method, as in the r22 rebuild).
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

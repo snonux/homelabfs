@@ -323,8 +323,22 @@ It also added a log line to the guest kernel each time the kernel cleans up
 and retries. Both parts changed, so on 2026-11-26 the package was rebuilt
 for zq3-r23 with a new kernel and a new daemon (`21c49a55…`, kernel build ID
 `2435216f…`, daemon `43238fe9…`). bhyve (`8cadae40…`) is the same file as
-before. The new daemon must pass the f3 self-check again. It is the package
-now allowed to mount with `hfs_fdattr`.
+before. The new daemon must pass the f3 self-check again.
+
+zq3-r23 ran that package on 2026-11-27. The daemon passed its self-check
+and the create that failed in r22 now worked, but T1 still failed with
+ENOSPC, one step later: a child process with 1024 groups could not open a
+file. Two clean-up rounds ran on the same mount at almost the same moment.
+The second one waited for the first, which handed back the space, and then
+found nothing left to hand back itself, so it gave up although the space
+was free again. 9n4 fixed this in the guest kernel: a round that waited
+for another round that freed space now retries once too. The log line also
+says which budget (ordinary or control) ran short and how full it was.
+Only the kernel changed, so on 2026-11-27 the package was rebuilt for
+zq3-r24 with just a new kernel (`c9500232…`, kernel build ID `8ce8bd6e…`). The
+daemon (`43238fe9…`, which passed the self-check in r23) and bhyve
+(`8cadae40…`) are the same files as before. It is the package now allowed
+to mount with `hfs_fdattr`.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

@@ -245,7 +245,9 @@ artifacts and their pins stayed unchanged. The r23 rebuild for zq3-r23
 `internal/viewcontrol`, which it links, so the test binary is now
 `d58fedc4…` and the cross-built daemon equals the new candidate daemon
 `43238fe9…`. The helper `6d54858c…` differs only in DWARF (the new
-out_dir); stripped it is still `7872b1b4…`.
+out_dir); stripped it is still `7872b1b4…`. The r24 rebuild for zq3-r24
+(`c9500232…`, 2026-11-27) rebuilt only the guest kernel (9n4) and reused that
+daemon `43238fe9…`, so these artifacts and their pins are unchanged.
 Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.

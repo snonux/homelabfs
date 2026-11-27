@@ -73,8 +73,9 @@ and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The r17 dae
 `f21450ec…`, and reused byte for byte by the r22 rebuild, candidate
 `2c85b230…`) passed it in zq3-r21
 ([record](results/20261126-zq3-r21/README.md)). The current daemon
-`43238fe9…` (km4, rebuilt for the r23 rebuild, candidate `21c49a55…`) has
-not been checked yet; zq3-r23 must check it, and every run repeats the check. f3-host descriptor execution still awaits the
+`43238fe9…` (km4, rebuilt for the r23 rebuild, candidate `21c49a55…`, and
+reused byte for byte by the r24 rebuild, candidate `c9500232…`) passed it in
+zq3-r23 ([record](results/20261127-zq3-r23/README.md)); every run repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
@@ -184,11 +185,23 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r23 rebuild for zq3-r23, built 2026-11-26) is
-retained at `/home/paul/tmp/claude/hfs-xz3-20261126-r23/package`, manifest
-SHA256 `21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3`,
-assembled from source checkout and repository baseline `21d8478`; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261126-r23/README.md).
+The current xz3 candidate (r24 rebuild for zq3-r24, built 2026-11-27) is
+retained at `/home/paul/tmp/claude/hfs-xz3-20261127-r24/package`, manifest
+SHA256 `c9500232792012a2131063fea7ad992c1115a5904a83aa0ba4c4815acce7670c`,
+assembled from source checkout `f6119d5` with repository baseline `21d8478`
+(the reused daemon's build revision; `inputs/repository-changes.patch`
+holds the 9n4 diff); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261127-r24/README.md).
+Only the guest kernel was rebuilt, for 9n4 (a charge whose retire round
+waited out a concurrent round that freed requests earns the one retry, and
+the retire line names the lane and its usage; zq3-r23 R23-1): `bzImage`
+`0a384db7…`, `vmlinux` `595941c6…`, GNU build ID `8ce8bd6e…`, `System.map`
+`5a455b45…`; `config` `692ed3fa…`, `Module.symvers` `b68cf94a…` and the five modules are byte-identical to `21c49a55…`, and two builds at the
+same O path were identical. The CGO daemon `43238fe9…`, the window
+artifacts and the exporter `8cadae40…` are reused byte for byte from the
+r23 rebuild (`21c49a55…`, source and repository baseline `21d8478`;
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261126-r23/README.md)),
+which zq3-r23 ran and which is now refused as superseded. In it
 km4 (zq3-r22 R22-1) changed the daemon and the guest kernel, so both were
 rebuilt: the CGO daemon `43238fe9…` (a domain-wide VIEW_RETIRE refusal is
 answered BLOCKED) with the window artifacts, and the kernel (patch 0003
@@ -476,7 +489,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `21c49a55…`,
+The concrete phased proposal for one disposable run with candidate `c9500232…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated
