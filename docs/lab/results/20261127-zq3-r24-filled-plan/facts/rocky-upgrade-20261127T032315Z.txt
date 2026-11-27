@@ -1,0 +1,39 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+== timedatectl
+               Local time: Fri 2026-11-27 05:23:20 EET
+           Universal time: Fri 2026-11-27 03:23:20 UTC
+                 RTC time: Fri 2026-11-27 03:23:20
+                Time zone: Europe/Sofia (EET, +0200)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+== timer
+Fri 2026-11-27 05:55:00 EET 31min left Fri 2026-11-27 04:55:00 EET 28min ago    unattended-upgrade-rocky.timer unattended-upgrade-rocky.service
+== stamp
+-rw-------. 1 root root 11 2026-11-27 00:55:07.867459102 +0200 /var/lib/unattended-upgrade/last-daily
+2026-11-27
+== last-upgrade-journal
+Nov 27 02:35:57 rocky systemd[1]: Starting Unattended upgrade (Rocky daily mode)...
+Nov 27 02:35:58 rocky unattended-upgrade-rocky[3668]: [2026-11-27T02:35:58] reboot deferred: standalone rocky requires explicit maintenance approval
+Nov 27 02:35:58 rocky systemd[1]: unattended-upgrade-rocky.service: Deactivated successfully.
+Nov 27 02:35:58 rocky systemd[1]: Finished Unattended upgrade (Rocky daily mode).
+Nov 27 02:55:00 rocky systemd[1]: Starting Unattended upgrade (Rocky daily mode)...
+Nov 27 02:55:00 rocky unattended-upgrade-rocky[3710]: [2026-11-27T02:55:00] reboot deferred: standalone rocky requires explicit maintenance approval
+Nov 27 02:55:00 rocky systemd[1]: unattended-upgrade-rocky.service: Deactivated successfully.
+Nov 27 02:55:00 rocky systemd[1]: Finished Unattended upgrade (Rocky daily mode).
+Nov 27 03:55:00 rocky systemd[1]: Starting Unattended upgrade (Rocky daily mode)...
+Nov 27 03:55:00 rocky unattended-upgrade-rocky[3827]: [2026-11-27T03:55:00] reboot deferred: standalone rocky requires explicit maintenance approval
+Nov 27 03:55:00 rocky systemd[1]: unattended-upgrade-rocky.service: Deactivated successfully.
+Nov 27 03:55:00 rocky systemd[1]: Finished Unattended upgrade (Rocky daily mode).
+Nov 27 04:55:00 rocky systemd[1]: Starting Unattended upgrade (Rocky daily mode)...
+Nov 27 04:55:00 rocky unattended-upgrade-rocky[3947]: [2026-11-27T04:55:00] reboot deferred: standalone rocky requires explicit maintenance approval
+Nov 27 04:55:00 rocky systemd[1]: unattended-upgrade-rocky.service: Deactivated successfully.
+Nov 27 04:55:00 rocky systemd[1]: Finished Unattended upgrade (Rocky daily mode).
+== dnf-history
+ID     | Command line             | Date and time    | Action(s)      | Altered
+-------------------------------------------------------------------------------
+    69 | -y upgrade --disablerepo | 2026-11-27 00:55 | Upgrade        |    2   
+    68 | -y upgrade --disablerepo | 2026-11-26 00:55 | C, E, I, U     |   29   
+    67 | -y upgrade --disablerepo | 2026-11-25 00:55 | Upgrade        |   14   
