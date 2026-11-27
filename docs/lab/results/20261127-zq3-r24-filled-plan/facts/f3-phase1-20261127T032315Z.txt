@@ -1,0 +1,80 @@
+== time
+Fri Nov 27 03:23:16 UTC 2026
+1795749796
+{ sec = 1794574308, usec = 469376 } Fri Nov 13 14:51:48 2026
+== vms
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
+freebsd    default    bhyveload  4    1G      -               No       Stopped
+iom1       default    uefi       2    2G      -               No       Stopped
+iom2       default    uefi       2    2G      -               No       Stopped
+iom3       default    uefi       2    2G      -               No       Stopped
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (10896)
+hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
+rocky
+10896 Fri Nov 27 00:25:44 2026 bhyve: rocky (bhyve)
+10918 Fri Nov 27 00:25:44 2026 bhyve: system.pwd (bhyve)
+10920 Fri Nov 27 00:25:44 2026 bhyve: system.grp (bhyve)
+== mem
+/dev/ada0p3       2097152        0  2097152     0%
+16879837184
+4096
+1104233
+375154
+68525
+2468185
+9145685768
+527494912
+0
+0
+== modules
+Id Refs Address                Size Name
+ 1   96 0xffffffff80200000  2351f30 kernel
+ 2    1 0xffffffff82553000     36c8 coretemp.ko
+ 3    1 0xffffffff83643000   628ca0 zfs.ko
+ 4    1 0xffffffff84df9000     3390 acpi_wmi.ko
+ 5    1 0xffffffff84dfd000     21e8 hms.ko
+ 6    1 0xffffffff84e00000     30a8 hidmap.ko
+ 7    1 0xffffffff84e04000     4250 ichsmb.ko
+ 8    1 0xffffffff84e09000     2178 smbus.ko
+ 9    1 0xffffffff84e0c000    c4498 if_iwlwifi.ko
+10    1 0xffffffff84ed1000    181b0 if_iwx.ko
+11    1 0xffffffff84eea000     6210 ig4.ko
+12    1 0xffffffff84ef1000     8810 if_bridge.ko
+13    1 0xffffffff84efa000     6120 bridgestp.ko
+14    1 0xffffffff84f01000     e5b0 snd_uaudio.ko
+15    1 0xffffffff84f10000     5780 ng_ubt.ko
+16    4 0xffffffff84f16000     abb8 netgraph.ko
+17    3 0xffffffff84f21000     a330 ng_hci.ko
+18    2 0xffffffff84f2c000     2670 ng_bluetooth.ko
+19    1 0xffffffff84f2f000     21e8 pflog.ko
+20    1 0xffffffff84f32000    64c08 pf.ko
+21    1 0xffffffff85000000   340438 vmm.ko
+22    1 0xffffffff84f97000     21dc nmdm.ko
+23    1 0xffffffff84f9a000    2f5e0 if_wg.ko
+24    1 0xffffffff84fca000     2a80 mac_ntpd.ko
+40    1 0xffffffff84fcd000     3578 fdescfs.ko
+41    1 0xffffffff84fd1000    15ae0 fusefs.ko
+no-fuse-fdesc-mounts
+== staging
+drwx------ root wheel /var/tmp/hfs-validation-xz3
+drwx------ root wheel /var/tmp/hfs-fdescfs-windows
+absent /var/tmp/hfs-validation-xz3/zq3-r24
+absent /var/tmp/hfs-fdescfs-windows/zq3-r24
+absent /var/tmp/hfs-20261127-zq3r24-fdq
+== route
+  interface: vm-public
+	inet 10.20.0.133 netmask 0xffffff00 broadcast 10.20.0.255
+	member: tap0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+	member: re0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+== poc
+drwxrwxrwx  3 root wheel 3 Oct 25 11:23 /var/tmp/homelabfs-9p-poc/share
+== zfs
+zroot	ONLINE	342G
+zroot	130G	327G
+zroot/bhyve	116G	327G
+zroot/var/tmp	6.36G	327G
+== ssh
+6a9e5573eda7dfaef1addf1b199872fe41af2027ef19430d4aa7e0a7919a369b /usr/bin/ssh
+end
