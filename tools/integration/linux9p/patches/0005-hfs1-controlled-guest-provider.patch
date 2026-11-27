@@ -252,7 +252,7 @@ diff --git a/fs/9p/hfs_controlled.c b/fs/9p/hfs_controlled.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.c
-@@ -0,0 +1,1394 @@
+@@ -0,0 +1,1426 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Registered controlled-only provider and finite retained ownership. */
 +#include "hfs_controlled.h"
@@ -809,6 +809,38 @@ new file mode 100644
 +		bool control, void **reservation)
 +{
 +	return hfs_controlled_reserve_owned(session, bytes, control, false, reservation);
++}
++
++/* 9n4 (zq3-r23 R23-1): one lane's charge state, as
++ * hfs_controlled_reserve_owned compares it, for hfs_retire_shared's line:
++ * bytes used (control: with the permanent control base) against the lane's
++ * byte limit, and reservation slots used against the lane's slot half. A
++ * line whose slots are at their limit while bytes remain shows a slot
++ * shortage; otherwise the bytes ran short. r22 and r23 recorded neither.
++ * A snapshot under hfs_controlled_lock; -ENOENT for a session that is not
++ * a registered controlled mount.
++ */
++int hfs_controlled_lane_usage(struct hfs_session *session, bool control,
++			      struct hfs_lane_usage *usage)
++{
++	const struct hfs_controlled_registry *registry;
++	int err = 0;
++
++	mutex_lock(&hfs_controlled_lock);
++	registry = hfs_controlled_registry;
++	if (!registry || !hfs_controlled_mount(session)) {
++		err = -ENOENT;
++		goto out;
++	}
++	usage->bytes = control ? hfs_controlled_control_used + registry->control_base_bytes :
++				 hfs_controlled_ordinary_used;
++	usage->limit = control ? registry->budget.control_bytes : registry->budget.ordinary_bytes;
++	usage->slots = control ? hfs_controlled_nr_control_credits :
++				 hfs_controlled_nr_credits - hfs_controlled_nr_control_credits;
++	usage->slot_limit = registry->budget.reservations / 2;
++out:
++	mutex_unlock(&hfs_controlled_lock);
++	return err;
 +}
 +
 +/* The caller already passed the typed pre-send gate. HELLO has no sb yet;
@@ -1651,7 +1683,7 @@ diff --git a/fs/9p/hfs_controlled.h b/fs/9p/hfs_controlled.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.h
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,95 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_CONTROLLED_H
 +#define FS_9P_HFS_CONTROLLED_H
@@ -1662,7 +1694,17 @@ new file mode 100644
 +struct hfs_view;
 +struct hfs_completion;
 +
++/* 9n4 (zq3-r23 R23-1): one byte lane's charge state for hfs_retire_shared's
++ * log line (hfs_controlled_lane_usage).
++ */
++struct hfs_lane_usage {
++	u64 bytes, limit;
++	u32 slots, slot_limit;
++};
++
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++int hfs_controlled_lane_usage(struct hfs_session *session, bool control,
++			      struct hfs_lane_usage *usage);
 +int hfs_completion_terminal_new(struct hfs_session *session, struct hfs_completion **out);
 +int hfs_controlled_begin_close(struct hfs_session *session);
 +int hfs_controlled_terminal_event_done(struct hfs_session *session,
@@ -1709,6 +1751,9 @@ new file mode 100644
 +int hfs_controlled_after_ack(struct hfs_session *session, const char *phase,
 +		const struct hfs_buf *payload, const struct hfs_json *response);
 +#else
++/* 9n4: no controlled provider, no lane counters to report. */
++static inline int hfs_controlled_lane_usage(struct hfs_session *session, bool control,
++					    struct hfs_lane_usage *usage) { return -EOPNOTSUPP; }
 +static inline int hfs_controlled_begin_close(struct hfs_session *session) { return 0; }
 +static inline int hfs_controlled_terminal_event_done(struct hfs_session *session, const struct hfs_json *event, const struct hfs_buf *last_ack, u64 sequence) { return -EOPNOTSUPP; }
 +static inline int hfs_controlled_release_ready(struct hfs_session *session) { return 0; }

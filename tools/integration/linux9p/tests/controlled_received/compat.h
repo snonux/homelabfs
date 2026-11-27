@@ -268,6 +268,8 @@ static inline int atomic_read(const atomic_t *value) { return atomic_load(value)
  * ordering of each operation; wj4 updated only tests/view/compat.h, so this
  * consumer no longer compiled. */
 static inline void atomic_inc(atomic_t *value) { atomic_fetch_add(value,1); }
+/* 9n4: hfs_retire's full barrier before the retirement generation's increment. */
+#define smp_mb__before_atomic() atomic_thread_fence(memory_order_seq_cst)
 static inline int atomic_read_acquire(const atomic_t *value) { return atomic_load_explicit(value,memory_order_acquire); }
 static inline int atomic_dec_return_release(atomic_t *value) { return atomic_fetch_sub_explicit(value,1,memory_order_release)-1; }
 /* 6m4: hfs_retire_shared's pin array and pin release. */

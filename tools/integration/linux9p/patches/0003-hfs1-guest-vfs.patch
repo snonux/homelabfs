@@ -703,7 +703,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,4192 @@
+@@ -0,0 +1,4212 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -4651,9 +4651,14 @@ new file mode 100644
 +		session->provider->unreserve(session, reservation);
 +	}
 +	mutex_unlock(&session->lock);
-+	/* 9n4: only after the frees, so a charge that sees the new generation
-+	 * (hfs_retire_shared) finds these bytes returned when it retries.
++	/* 9n4: only after the frees. atomic_inc implies no ordering, and the
++	 * unlocks above are release-only (a later access may pass them), so the
++	 * full barrier orders every unreserve before the increment: a charge
++	 * that sees the new generation (hfs_retire_shared) and then takes the
++	 * provider's lock to retry finds these bytes returned. A reader that
++	 * misses the increment only keeps its ENOSPC, as before 9n4.
 +	 */
++	smp_mb__before_atomic();
 +	atomic_inc(&hfs_retired_rounds);
 +	wake_up_all(&session->allocation_wait);
 +	if (cut) {
@@ -4702,15 +4707,30 @@ new file mode 100644
 + * 9n4 (zq3-r23 R23-1): the line also names the charge's byte lane
 + * (ordinary or control; r22 and r23 could not tell which lane ran short),
 + * and an outcome of its own for a round that freed nothing itself while a
-+ * concurrent round freed requests (see hfs_retire_shared).
++ * concurrent round freed requests (see hfs_retire_shared). With the
++ * controlled provider it also carries that lane's usage when the outcome is
++ * decided (hfs_controlled_lane_usage): bytes used of the byte limit and
++ * reservation slots used of the slot limit, so the next run's log shows how
++ * short the lane was and whether bytes or slots ran out.
 + */
 +static void hfs_retire_shared_note(struct hfs_session *session, int own_err, u32 own,
 +				   u32 offered, u32 others, u32 others_freed, bool control,
 +				   const char *outcome)
 +{
-+	pr_info_ratelimited("9p-hfs: session %pUb retired under charge pressure: own retire %d freed %u requests, %u of %u other sessions freed %u, %s lane; %s\n",
++	const char *lane = control ? "control" : "ordinary";
++	struct hfs_lane_usage usage;
++
++	if (hfs_controlled_lane_usage(session, control, &usage)) {
++		pr_info_ratelimited("9p-hfs: session %pUb retired under charge pressure: own retire %d freed %u requests, %u of %u other sessions freed %u, %s lane; %s\n",
++				    &session->enrollment.session, own_err, own, others, offered,
++				    others_freed, lane, outcome);
++		return;
++	}
++	pr_info_ratelimited("9p-hfs: session %pUb retired under charge pressure: own retire %d freed %u requests, %u of %u other sessions freed %u, %s lane used %llu of %llu bytes, %u of %u slots; %s\n",
 +			    &session->enrollment.session, own_err, own, others, offered,
-+			    others_freed, control ? "control" : "ordinary", outcome);
++			    others_freed, lane, (unsigned long long)usage.bytes,
++			    (unsigned long long)usage.limit, usage.slots,
++			    usage.slot_limit, outcome);
 +}
 +
 +/* 6m4 (zq3-r21 R21-1): retire this session's retirable requests and those

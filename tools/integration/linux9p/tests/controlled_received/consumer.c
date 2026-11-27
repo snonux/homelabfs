@@ -680,11 +680,17 @@ static u32 share_sessions(bool on) {
  spin_unlock(&hfs_sessions_lock);
  return requests;
 }
-/* 6m4: hold ordinary bytes so that only `leave` stays free; *pressure owns them. */
-static void package_pressure(struct hfs_session *session,u64 leave,void **pressure) {
- u64 remaining=hfs_controlled_registry->budget.ordinary_bytes-hfs_controlled_ordinary_used;
+/* 6m4: hold ordinary bytes so that only `leave` stays free; *pressure owns
+ * them. 9n4: or control bytes (less the permanent control base), for a
+ * control-lane charge. */
+static void package_pressure_lane(struct hfs_session *session,u64 leave,bool control,void **pressure) {
+ u64 remaining=control?hfs_controlled_registry->budget.control_bytes-hfs_controlled_registry->control_base_bytes-hfs_controlled_control_used:
+  hfs_controlled_registry->budget.ordinary_bytes-hfs_controlled_ordinary_used;
  assert(remaining>leave+sizeof(struct hfs_controlled_credit));
- assert(!hfs_controlled_reserve(session,remaining-leave-sizeof(struct hfs_controlled_credit),false,pressure));
+ assert(!hfs_controlled_reserve(session,remaining-leave-sizeof(struct hfs_controlled_credit),control,pressure));
+}
+static void package_pressure(struct hfs_session *session,u64 leave,void **pressure) {
+ package_pressure_lane(session,leave,false,pressure);
 }
 static void command(char *line) {
  char operation[32];unsigned id,index;int consumed=0;
@@ -1235,16 +1241,20 @@ static void command(char *line) {
   * hfs_view_ticket_prepare: room for its 1 MiB reservation and family
   * credit, not for its view completion package. The prepared ticket is
   * put again at once; a refusal leaves tickets, requests and bytes as they
-  * were. */
+  * were. 9n4: argument `control` charges a control ticket on the control
+  * lane instead (pressure on the control bytes), so the retire-and-retry
+  * line's control-lane usage is checked too. */
  if(!strcmp(operation,"PACKAGE_TICKET")){
   struct hfs_session *session=f->session;void *pressure=NULL;struct hfs_view_ticket *ticket=NULL;
+  bool control=!strcmp(line+consumed,"control");
   u64 leave=(hfs_controlled_consumed(session)?1ULL:4ULL)*1024*1024+sizeof(struct hfs_view_family)+16384+2*sizeof(struct hfs_controlled_credit)+(1ULL<<20);
+  assert(control||!line[consumed]);
   assert(hfs_completion_capacity(true,HFS_VIEW_BODY_MAX)>leave);
-  package_pressure(session,leave,&pressure);
-  u64 cell=session->next_cell,ordinary=hfs_controlled_ordinary_used;u32 tickets=session->nr_view_tickets,total=share_sessions(true);
-  int err=hfs_view_ticket_prepare(session,&f->credential,false,&ticket);
+  package_pressure_lane(session,leave,control,&pressure);
+  u64 cell=session->next_cell,ordinary=hfs_controlled_ordinary_used,controls=hfs_controlled_control_used;u32 tickets=session->nr_view_tickets,total=share_sessions(true);
+  int err=hfs_view_ticket_prepare(session,&f->credential,control,&ticket);
   u32 after=share_sessions(false);
-  if(err){assert(err==-ENOSPC&&!ticket);assert(session->next_cell==cell&&session->nr_view_tickets==tickets&&after==total&&hfs_controlled_ordinary_used==ordinary);}
+  if(err){assert(err==-ENOSPC&&!ticket);assert(session->next_cell==cell&&session->nr_view_tickets==tickets&&after==total&&hfs_controlled_ordinary_used==ordinary&&hfs_controlled_control_used==controls);}
   else{assert(ticket&&ticket->completion&&after<total&&session->nr_view_tickets==tickets+1);hfs_view_ticket_put(ticket);assert(session->nr_view_tickets==tickets);}
   hfs_controlled_unreserve(session,pressure);done(id,err,NULL,0);return;
  }
