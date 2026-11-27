@@ -77,6 +77,15 @@ def config_argv(source, out, state, mm_objects=False, controlled=False):
     return argv
 
 
+def make_argv(out):
+    """The kbuild make prefix every make stage shares (O= tree, two jobs).
+
+    Stage argv are recorded in stages.json and the receipt, so this list
+    must stay byte-identical; callers append the target(s).
+    """
+    return ['make', '-j2', f'O={out}', 'ARCH=x86_64']
+
+
 def log_warnings(log):
     """Compiler/kbuild warning lines in a stage log (the controlled gate)."""
     return [line for line in log.read_text(errors='replace').splitlines()
@@ -94,7 +103,7 @@ def controlled_objects(source, output, run):
     """
     out = output / 'controlled'
     out.mkdir(mode=0o700)
-    make = ['make', '-j2', f'O={out}', 'ARCH=x86_64']
+    make = make_argv(out)
     run(make + ['x86_64_defconfig'], 'controlled-defconfig')
     run(config_argv(source, out, '--enable', controlled=True), 'controlled-config')
     run(make + ['olddefconfig'], 'controlled-olddefconfig')
@@ -278,7 +287,7 @@ class StageRunner:
 
 def configure(source, output, run, state, mm_objects):
     """defconfig/config/olddefconfig stages; returns the asserted MM symbols."""
-    make = ['make', '-j2', f'O={output}', 'ARCH=x86_64']
+    make = make_argv(output)
     run(make + ['x86_64_defconfig'], 'defconfig')
     run(config_argv(source, output, state, mm_objects=mm_objects), 'config')
     run(make + ['olddefconfig'], 'olddefconfig')
@@ -302,7 +311,7 @@ def first_pass(source, output, run, module_objects, mm_objects):
     if mm_objects:
         targets += ['mm/' + name for name in MM_TARGETS]
     (output / 'config-binding.json').write_text(json.dumps({'config_sha256': sha(output / '.config'), 'targets': targets, 'mm_check_symbols': mm_config}, indent=2) + '\n')
-    run(['make', '-j2', f'O={output}', 'ARCH=x86_64'] + targets, 'objects')
+    run(make_argv(output) + targets, 'objects')
     artifacts = {str(path.relative_to(output)): sha(path)
                  for part in ('fs/9p', 'net/9p')
                  for path in (output / part).glob('*.o')}

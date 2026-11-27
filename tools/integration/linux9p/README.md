@@ -242,7 +242,11 @@ with a fake kernel tree and fake processes (no make, compiler or Linux
 source), the controlled pass's refusals (missing `CONTROLLED` symbol,
 warnings, missing objects) and `controlled/` artifact keys, plus `main()`'s
 refusals, stage names and argv, and its inputs, config-binding, stages and
-receipt files. It does not exercise the RSS/disk/time limit kill path.
+receipt files. With a stubbed clock, `os.killpg` and RSS/disk samplers it
+also drives the RSS, disk (sampled every 5 s) and 20-minute limits: each
+records its `limit_reason`, sends SIGTERM to the stage's process group
+(SIGKILL if it is still alive 5 s later), keeps the stage log and
+`stages.json`, and refuses with the retained-evidence message.
 The output receipt identifies config, commands,
 tool versions and object hashes. It compiles and combines kernel objects;
 it does **not** perform complete module modpost/link, build a bootable kernel,
