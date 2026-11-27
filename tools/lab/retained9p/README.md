@@ -13,16 +13,21 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 r24 rebuild for
-zq3-r24 (built 2026-11-27), manifest `c9500232792012a2131063fea7ad992c1115a5904a83aa0ba4c4815acce7670c`
-(source `f6119d5`, repository baseline `21d8478`, the reused daemon's
-build revision; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261127-r24/README.md)).
-Only the kernel was rebuilt (build ID `8ce8bd6e…`), for 9n4 (a charge
-whose retire round waited out a concurrent round that freed requests earns
-the one retry, and the retire line names the lane and its usage; zq3-r23
-R23-1). The daemon `43238fe9…` and the exporter `8cadae40…` are reused
-byte for byte from the r23 rebuild (`21c49a55…`, now superseded). In that
+**The controller pins exactly one candidate:** the xz3 r25 rebuild for
+zq3-r25 (built 2026-11-27), manifest `a3eac923d2b8713a3252b1b95cfe0294a6326bbc298de9d67e81b7ed8ed5e5b9`
+(source and repository baseline `e9ae706`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261127-r25/README.md)).
+gn4 (zq3-r24 R24-1) rebuilt the kernel (build ID `8c70915f…`: a lease's
+control release ticket is charged before the VIEW_ACQUIRE, and a charge's
+retire round also retires the caller's view tickets) and the daemon
+(`43414d7f…`, go1.27.4: `checkRetire` refuses for an active lease only with
+the retiring family's credentials); the exporter `8cadae40…` is reused byte
+for byte from the r24 rebuild (`c9500232…`, now superseded). In that r24
+rebuild only the kernel was rebuilt (build ID `8ce8bd6e…`), for 9n4 (a
+charge whose retire round waited out a concurrent round that freed requests
+earns the one retry, and the retire line names the lane and its usage;
+zq3-r23 R23-1). Its daemon `43238fe9…` and exporter were reused byte for
+byte from the r23 rebuild (`21c49a55…`, also superseded). In that
 r23 rebuild km4 (zq3-r22 R22-1) rebuilt the daemon (`43238fe9…`, go1.27.4:
 a domain-wide VIEW_RETIRE refusal is answered BLOCKED) and the kernel
 (build ID `2435216f…`: a rate-limited log line per 6m4 retire-and-retry
@@ -32,7 +37,7 @@ rebuilt (build ID `c34dc6fb…`, Fedora 45 binutils): it added 6m4 (call and vie
 ENOSPC, retire every session of the provider before one retry; zq3-r21
 R21-1) to the kernel of the second r21 rebuild (`f21450ec…`, now
 superseded), and reused its daemon `c7b89648…` (go1.27.4) and exporter
-`8cadae40…` byte for byte. The r24 rebuild is also the one
+`8cadae40…` byte for byte. The r25 rebuild is also the one
 `FD_ATTR` candidate (see [`hfs_fdattr`](#hfs_fdattr-mounts-bl4-s64)). The
 `f21450ec…` kernel (build ID `bd4fa753…`, c64 recipe, so SELinux is an active LSM) adds s64
 (GETATTR/SETATTR through the open description behind `hfs_fdattr`), hh4
@@ -263,10 +268,11 @@ whose guest kernel, lib9p exporter and daemon all carry s64 may mount with
 it: with a pre-s64 exporter or daemon a described call on the controlled
 session is a failed ALLOCATE that costs the session. `controller.py`
 `FD_ATTR` lists those candidates (a subset of `ADMITTED`). It holds the
-r24 rebuild `c9500232…`, whose guest kernel, exporter and daemon all carry
-s64. The second r21 rebuild `f21450ec…`, the r22 rebuild `2c85b230…` and
-the r23 rebuild `21c49a55…` also carried s64 but are refused as superseded
-(R21-1, R22-1, R23-1); every older superseded candidate, the first
+r25 rebuild `a3eac923…`, whose guest kernel, exporter and daemon all carry
+s64. The second r21 rebuild `f21450ec…`, the r22 rebuild `2c85b230…`, the
+r23 rebuild `21c49a55…` and the r24 rebuild `c9500232…` also carried s64
+but are refused as superseded (R21-1, R22-1, R23-1, R24-1); every older
+superseded candidate, the first
 r21 rebuild `1428d4db…` included, predates s64 and must never be added.
 
 The option is never implied by the tooling version. A plan asks for it and
@@ -892,7 +898,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 c9500232… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 a3eac923… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

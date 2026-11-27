@@ -337,8 +337,25 @@ says which budget (ordinary or control) ran short and how full it was.
 Only the kernel changed, so on 2026-11-27 the package was rebuilt for
 zq3-r24 with just a new kernel (`c9500232…`, kernel build ID `8ce8bd6e…`). The
 daemon (`43238fe9…`, which passed the self-check in r23) and bhyve
-(`8cadae40…`) are the same files as before. It is the package now allowed
-to mount with `hfs_fdattr`.
+(`8cadae40…`) are the same files as before.
+
+zq3-r24 ran that package on 2026-11-27, and T1 failed the same way again.
+This time the retry ran but could not help: the mount's control budget was
+98% full. It was held by "release tickets", one per lease the processes had
+already given back, each about 25 MiB, which the kernel never offered for
+clean-up. The ticket that failed belonged to a lease the host had already
+granted, so the host kept that lease forever, and because one lease of the
+mount was still active, the daemon then refused every clean-up of the
+mount. gn4 fixed both sides. The guest kernel now reserves a lease's
+release ticket before it asks for the lease, so a full budget refuses the
+request cleanly, and a clean-up round now also hands back released view
+tickets. The daemon now refuses a clean-up only when the active lease
+belongs to the same set of credentials. Both parts changed, so on
+2026-11-27 the package was rebuilt for zq3-r25 with a new kernel and a new
+daemon (`a3eac923…`, kernel build ID `8c70915f…`, daemon `43414d7f…`).
+bhyve (`8cadae40…`) is the same file as before. The new daemon must pass
+the f3 self-check again. It is the package now allowed to mount with
+`hfs_fdattr`.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
