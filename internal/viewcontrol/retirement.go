@@ -11,9 +11,8 @@ import (
 )
 
 // ErrRetirementHeld is what Facts.CheckPhysical returns for a VIEW_RETIRE
-// while the domain still has an active physical or dirty owner (the
-// runtime's factsLedger.checkRetire: any active lease or open reservation
-// of the scope, whoever holds it). retire answers it BLOCKED, like its own
+// while an active physical or dirty owner remains (the runtime's
+// factsLedger.checkRetire). retire answers it BLOCKED, like its own
 // retirementBlocked clauses: nothing changes and the guest offers the same
 // range again later (hfs_view_retire records view->retire_blocked, re4).
 //
@@ -25,7 +24,18 @@ import (
 // creating process's observation leases were active, got FETCH AGAIN until
 // its deadline (-110), blocked the session, and the CREATE waiting for
 // session->retirement behind it failed ENOSPC after 33 s.
-var ErrRetirementHeld = fmt.Errorf("%w: retirement refused while the domain has an active owner", fsapi.WouldBlock)
+//
+// Since gn4 (zq3-r24 R24-1) an active lease refuses there only the
+// retirement of its own credentials' families (CredentialDigest); an open
+// reservation still refuses domain-wide.
+var ErrRetirementHeld = fmt.Errorf("%w: retirement refused while an active owner remains", fsapi.WouldBlock)
+
+// CredentialDigest is the credential hash a lease carries
+// (ViewLease.CredentialHash) for credentials c, as retirementBlocked
+// compares it. The runtime's physical retirement check uses it (gn4).
+func CredentialDigest(c guestbridge.Credentials) string {
+	return digest(c)
+}
 
 type retirement struct {
 	Anchor, Nonce string
@@ -115,8 +125,11 @@ func blockedRetirement(f family) (json.RawMessage, error) {
 //     only tickets it no longer references: a GRANTED acquisition ticket of
 //     an active or shared lease must not be recycled while a holder may
 //     still use it. The physical side (controlledruntime
-//     factsLedger.checkRetire) refuses even domain-wide for the same reason;
-//     since km4 that refusal (ErrRetirementHeld) is answered BLOCKED too.
+//     factsLedger.checkRetire) refuses for the same reason; since km4 that
+//     refusal (ErrRetirementHeld) is answered BLOCKED too. Until gn4
+//     (zq3-r24 R24-1) it refused for any active lease of the domain; now,
+//     like this clause, only for one of the same credentials (an open
+//     reservation there still refuses domain-wide).
 //
 // A per-ticket rule could free answered releases sooner, but only together
 // with those tests, a matching facts check and a guest that re-sends a

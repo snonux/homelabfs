@@ -2609,7 +2609,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,2402 @@
+@@ -0,0 +1,2445 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -3002,11 +3002,16 @@ new file mode 100644
 + * failed ENOSPC at once while retirable requests, of this or another mount,
 + * held the bytes. Retiring requests returns only their own lane's bytes; a
 + * control ticket after ordinary retirements (or the reverse) still fails
-+ * cleanly. Unretired view tickets are not offered here (hfs_view_retire).
++ * cleanly.
 + *
 + * 9n4 (zq3-r23 R23-1): the retirement generation is read before the first
 + * attempt, so a concurrent round that freed requests meanwhile also earns
 + * the one retry (hfs_retire_shared).
++ *
++ * gn4 (zq3-r24 R24-1): the shared round now also retires this session's
++ * retirable view tickets (hfs_view_retire), the only owners of control
++ * bytes besides the permanent packages; a retry that fails again is logged
++ * (hfs_retire_shared_failed), as r24's was not.
 + */
 +static int hfs_view_ticket_charge(struct hfs_session *session, bool control, void **credit,
 +				  void **family_credit, struct hfs_completion **completion)
@@ -3015,9 +3020,12 @@ new file mode 100644
 +	int err = hfs_view_ticket_charge_once(session, control, credit, family_credit,
 +					      completion);
 +
-+	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire_shared(session, control, since))
++	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire_shared(session, control, since)) {
 +		err = hfs_view_ticket_charge_once(session, control, credit, family_credit,
 +						  completion);
++		if (err)
++			hfs_retire_shared_failed(session, control, err);
++	}
 +	return err;
 +}
 +
@@ -4021,27 +4029,43 @@ new file mode 100644
 +
 +/* The release state of a decoded lease: the PAGE description, the issuer's
 + * credentials (immutable, with a native reference) and the preowned control
-+ * release ticket and payload. On an error the caller frees the lease.
++ * release ticket (*release, which the lease takes over) and payload. On an
++ * error the caller frees the lease, and with it the release ticket.
++ *
++ * gn4 (zq3-r24 R24-1): the release ticket is prepared by
++ * hfs_lease_acquire_ex before its VIEW_ACQUIRE is sent, no longer here
++ * after the GRANTED. In r24 this charge failed ENOSPC on a full control
++ * lane after the 1024-group child's second VIEW_ACQUIRE was granted: the
++ * guest freed the lease locally, but the host kept it active with no
++ * release ticket. Nothing could release it, and the then domain-wide
++ * retirement check (factsLedger.checkRetire, per credentials since gn4)
++ * answered every later VIEW_RETIRE of m0 BLOCKED, so the host still held
++ * 22 tickets and 8 leases afterwards.
 + */
-+static int hfs_lease_own(struct hfs_session *session, const struct hfs_cred *cred,
-+			 const struct hfs_cap *description, struct hfs_lease *lease)
++static int hfs_lease_own(const struct hfs_cred *cred, const struct hfs_cap *description,
++			 struct hfs_view_ticket **release, struct hfs_lease *lease)
 +{
++	lease->release_ticket = *release;
++	*release = NULL;
 +	if (description)
 +		memcpy(lease->description, description->token, 32);
 +	lease->issuer = kmemdup(cred, sizeof(*cred), GFP_KERNEL);
 +	if (!lease->issuer)
 +		return -ENOMEM;
 +	lease->issuer->native = get_cred(cred->native);
-+	return hfs_buf_init(&lease->release_payload, 32768) ?:
-+		hfs_view_ticket_prepare(session, cred, true, &lease->release_ticket);
++	return hfs_buf_init(&lease->release_payload, 32768);
 +}
 +
-+/* The arguments of hfs_lease_acquire_ex that its grant needs. */
++/* The arguments of hfs_lease_acquire_ex that its grant needs. gn4: release
++ * points at the release ticket prepared before the VIEW_ACQUIRE; the
++ * decoded lease takes it over (hfs_lease_own).
++ */
 +struct hfs_lease_want {
 +	const struct hfs_cred *cred;
 +	const struct hfs_cap *description;
 +	const struct hfs_buf *access;
 +	const struct hfs_buf *expected;
++	struct hfs_view_ticket **release;
 +	bool dirty;
 +};
 +
@@ -4120,7 +4144,7 @@ new file mode 100644
 +	if (!err && !*result && (*out)->unadopted)
 +		*result = -EXDEV;
 +	if (!err) {
-+		err = hfs_lease_own(session, want->cred, want->description, *out);
++		err = hfs_lease_own(want->cred, want->description, want->release, *out);
 +		if (err) {
 +			hfs_lease_free(*out);
 +			*out = NULL;
@@ -4163,12 +4187,12 @@ new file mode 100644
 +			 u64 offset, bool dirty, const struct hfs_buf *expected_target,
 +			 bool advance, struct hfs_lease **out, bool *blocked)
 +{
++	struct hfs_view_ticket *ticket, *release = NULL;
 +	struct hfs_buf payload = {}, access = {};
 +	struct hfs_lease_want want = {
 +		.cred = cred, .description = description, .access = &access,
-+		.expected = expected_target, .dirty = dirty,
++		.expected = expected_target, .release = &release, .dirty = dirty,
 +	};
-+	struct hfs_view_ticket *ticket;
 +	struct hfs_json *response = NULL;
 +	int err, result = 0;
 +
@@ -4181,6 +4205,18 @@ new file mode 100644
 +	err = hfs_view_ticket_prepare(session, cred, false, &ticket);
 +	if (err)
 +		return err;
++	/* gn4 (zq3-r24 R24-1): the lease's control release ticket is charged
++	 * before the VIEW_ACQUIRE is sent (see hfs_lease_own). A full control
++	 * lane now refuses the acquisition ENOSPC with no host lease, and its
++	 * charge's view retirement (hfs_retire_shared) runs before this
++	 * acquisition's grant. The host refuses (BLOCKED) the retirement of a
++	 * family whose credentials hold an active lease, so after the grant
++	 * this caller's own families could never retire. An unused release
++	 * ticket is unnumbered and is put locally below.
++	 */
++	err = hfs_view_ticket_prepare(session, cred, true, &release);
++	if (err)
++		goto free;
 +	err = hfs_lease_acquire_request(ticket, object, &want, offset, advance,
 +					&payload, &access);
 +	if (err)
@@ -4195,6 +4231,7 @@ new file mode 100644
 +free:
 +	if (err)
 +		hfs_view_ticket_put(ticket);
++	hfs_view_ticket_put(release); /* NULL once a decoded lease took it */
 +	hfs_json_free(response);
 +	hfs_buf_free(&payload);
 +	hfs_buf_free(&access);
@@ -4615,6 +4652,12 @@ new file mode 100644
 +	 */
 +	if (!err || round.host_blocked)
 +		WRITE_ONCE(view->retire_blocked, round.host_blocked);
++	/* gn4: a round that advanced a floor returned its tickets' bytes, so a
++	 * charge that failed meanwhile earns its one retry (hfs_retire_shared,
++	 * 9n4), as after an hfs_retire round that freed requests.
++	 */
++	if (round.advanced)
++		hfs_retire_generation_advance();
 +	/* 1h4: this round is over, whatever it achieved; an observation whose
 +	 * try found it busy (hfs_view_retire_wait) decides again.
 +	 */

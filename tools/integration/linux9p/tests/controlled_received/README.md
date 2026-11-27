@@ -191,6 +191,27 @@ C7 adds these test-only commands, all invoking the maintained production helpers
   retrying the charge once`. When the round has nothing to retire either, the call
   refuses ENOSPC with no native bytes (`... nothing freed, the charge
   fails`).
+* gn4 (zq3-r24 R24-1): every round line now carries the caller's view
+  retirement after its own requests (`own retire <e> freed <n> requests,
+  view retire <e>, …`), and a retried charge that fails again logs
+  `charge still failed after the retry: error -28, <lane> lane used … ; the
+  charge fails` (`loggedRetryFailure`). `TicketPackageRetirement` ends with
+  r24's round: a control ticket short of control bytes while session 0
+  holds one retirable request frees it (ordinary bytes), retries once and
+  must log both lines. A refused `PACKAGE_TICKET` after a round that
+  retired something may only have lowered the counters; a success may also
+  come from retired view tickets.
+* `PACKAGE_ACQUIRE ID SESSION` (gn4) is `ACQUIRE` with the control bytes
+  short (`PACKAGE_TICKET control`'s pressure, both sessions listed) during
+  the actual `hfs_lease_acquire`; the pressure ends before the initial
+  binding. `TestControlledReceivedActualControlLaneRetirement` (`--scenario
+  package`, mapped features): session 0 acquires and releases its lease
+  through its recall, leaving a GRANTED acquire and a RELEASED release
+  ticket charged. A control `PACKAGE_TICKET` then succeeds after a
+  VIEW_RETIRE (`view retire 0`). With nothing retirable, `PACKAGE_ACQUIRE`
+  refuses ENOSPC with no native bytes, so no VIEW_ACQUIRE is granted
+  without a release ticket. After another release it is granted, with a
+  VIEW_RETIRE before its VIEW_ACQUIRE.
 * `CLOSE_PENDING` invokes actual provider STOP/retain while dirty pins, results
   and cookies remain. It asserts refusal preserves every owner; subsequent
   funded controls must use the typed closing path. It is no native unmount.

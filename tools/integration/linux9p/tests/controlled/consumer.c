@@ -210,6 +210,13 @@ static int hfs_retire_shared(struct hfs_session *s, bool control, unsigned int s
    (void)since;
    return hfs_retire(s);
 }
+/* gn4: hfs_call_reserve logs a retry that failed again; with nothing ever
+ * retired here no retry runs, so this line is never reached. */
+static void hfs_retire_shared_failed(struct hfs_session *s, bool control, int err) {
+   (void)s;
+   (void)control;
+   (void)err;
+}
 static struct hfs_view *hfs_view_get(struct hfs_session *s) {
    (void)s;
    return NULL;

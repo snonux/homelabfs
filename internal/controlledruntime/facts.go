@@ -272,13 +272,13 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 	if op != "VIEW_RETIRE" {
 		return fsapi.Unsupported
 	}
-	return l.checkRetire(scope)
+	return l.checkRetire(scope, raw)
 }
 
-// checkRetire: retirement cannot clear an active physical or dirty owner of
-// the domain. The controller's actual STOP/install/reopen loop closes these
-// first. A refused retirement only leaves the guest's protected ticket floor
-// where it is, so it stays domain-wide.
+// checkRetire: retirement cannot clear an active physical or dirty owner.
+// The controller's actual STOP/install/reopen loop closes these first. A
+// refused retirement only leaves the guest's protected ticket floor where it
+// is.
 //
 // The refusal is viewcontrol.ErrRetirementHeld, which the controller answers
 // BLOCKED (task km4). It was a bare WouldBlock, which the transport retried
@@ -286,9 +286,24 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 // its 30 s exchange deadline, holding session->retirement and its cleanup
 // worker), so in zq3-r22 (R22-1) one child's VIEW_RETIRE beside another
 // process's active observation lease blocked m0.
-func (l factsLedger) checkRetire(scope guestbridge.Context) error {
+//
+// gn4 (zq3-r24 R24-1): an active lease refuses only the retirement of its
+// own credentials' families, the rule the controller's retirementBlocked
+// already applies: those are the tickets a holder may still use. Until gn4
+// any active lease of the domain refused every retirement. In r24 the
+// 1024-group access child held its own observation lease while its next
+// release ticket was charged, so the released tickets of the T1 process
+// and children 1 and 2 (12 VIEW_RELEASE tickets, about 321 MB of m0's
+// 512 MiB guest control lane) could not be retired and the charge failed
+// ENOSPC. An open dirty reservation still refuses domain-wide.
+func (l factsLedger) checkRetire(scope guestbridge.Context, raw json.RawMessage) error {
+	var r struct{ Credentials guestbridge.Credentials }
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return err
+	}
+	credentials := viewcontrol.CredentialDigest(r.Credentials)
 	for _, lease := range l.Leases {
-		if lease.Lease.Scope == scope && lease.Active {
+		if lease.Lease.Scope == scope && lease.Active && lease.Lease.CredentialHash == credentials {
 			return viewcontrol.ErrRetirementHeld
 		}
 	}

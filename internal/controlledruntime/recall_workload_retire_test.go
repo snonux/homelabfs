@@ -25,10 +25,19 @@ import (
 // snapshot taken at the failure OBSERVE holds that VIEW_RETIRE (host cell
 // 16030) still "executing", i.e. retried, and three active m0 leases.
 //
-// The refusal must be an answer: BLOCKED with the floor unchanged, which
+// km4 made the refusal an answer: BLOCKED with the floor unchanged, which
 // the guest records (view->retire_blocked) and offers again later (re4),
-// instead of a cell that is never answered. Once the holder's lease is
-// released too, the next cleanup's VIEW_RETIRE retires child 1's families.
+// instead of a cell that is never answered.
+//
+// gn4 (zq3-r24 R24-1, docs/lab/results/20261127-zq3-r24/README.md): the
+// physical check is now per credentials, as the controller's own
+// retirementBlocked already was, so child 1's families retire at once
+// beside the holder's lease. In r24 the domain-wide refusal kept 12
+// released VIEW_RELEASE tickets of three other credential sets charged
+// (about 321 MB of m0's 512 MiB guest control lane) while the 1024-group
+// child held its own observation lease, and that child's next release
+// ticket charge failed ENOSPC. The holder's own families still wait for
+// its release.
 func TestZQ3ChildRetireBesideHeldObservation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("assembles the runtime and replays two mount(8)s")
@@ -39,7 +48,7 @@ func TestZQ3ChildRetireBesideHeldObservation(t *testing.T) {
 	m.mount(1)
 	m.settle()
 	mount := m.mounts[0]
-	m.begin("R22-1: m0 child retires beside a held observation")
+	m.begin("R22-1/R24-1: m0 child retires beside a held observation")
 	holder := m.process("holder", nil) // child 2's / the creating process's lease
 	m.enterView(mount)
 	held, heldTicket := m.lease(mount, holder, mount.target)
@@ -58,18 +67,22 @@ func TestZQ3ChildRetireBesideHeldObservation(t *testing.T) {
 	m.await(m.claim(mount, child, "GETATTR", map[string]any{"object": mount.root}))
 	m.queueRelease(mount, child, *lease, acquired)
 	m.settle()
-	m.requireRetires(t, "BLOCKED")
+	m.requireRetires(t, "RETIRED")
 	family := mount.familyIndex[child.name+"/acquire"]
-	if family.floor != 0 {
-		t.Errorf("child 1's acquisition floor %d after BLOCKED, want 0", family.floor)
+	if family.floor != 1 {
+		t.Errorf("child 1's acquisition floor %d beside the holder's lease, want 1", family.floor)
+	}
+	holderFamily := mount.familyIndex[holder.name+"/acquire"]
+	if holderFamily.floor != 0 {
+		t.Errorf("holder's acquisition floor %d while its lease is active, want 0", holderFamily.floor)
 	}
 
-	m.begin("holder releases; its cleanup offers child 1's families again")
+	m.begin("holder releases; its cleanup retires its own families")
 	m.queueRelease(mount, holder, *held, heldTicket)
 	m.settle()
 	m.requireRetires(t, "RETIRED")
-	if family.floor != 1 {
-		t.Errorf("child 1's acquisition floor %d with no lease left, want 1", family.floor)
+	if holderFamily.floor != 1 {
+		t.Errorf("holder's acquisition floor %d with no lease left, want 1", holderFamily.floor)
 	}
 }
 

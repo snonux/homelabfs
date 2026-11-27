@@ -93,4 +93,6 @@ static void hfs_process_exit_work(struct work_struct *work) { (void)work;abort()
  * 9n4: and no round ever advances the retirement generation. */
 static unsigned int hfs_retire_generation(void) { return 0; }
 static int hfs_retire_shared(struct hfs_session *session, bool control, unsigned int since) { (void)session;(void)control;(void)since;return -EAGAIN; }
+/* gn4: the failed-retry line; no retry runs here (nothing retires). */
+static void hfs_retire_shared_failed(struct hfs_session *session, bool control, int err) { (void)session;(void)control;(void)err; }
 #endif
