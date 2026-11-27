@@ -2326,10 +2326,11 @@ func TestControlledReceivedActualPackageRetirement(t *testing.T) {
 			// Session 1 has nothing to retire: session 0's ROOT/CREATE must go.
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, 0, 1)
 			// km4: the round is logged with what it freed.
-			p.logged(t, "own retire -11 freed 0 requests, 1 of 1 other sessions freed 2; retrying the charge once")
+			// 9n4: the line names the charge's byte lane.
+			p.logged(t, "own retire -11 freed 0 requests, 1 of 1 other sessions freed 2, ordinary lane; retrying the charge once")
 			// Session 1's GETATTR result stays held; session 0 has none left.
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, -28, 0)
-			p.logged(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0; nothing freed, the charge fails")
+			p.logged(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0, ordinary lane; nothing freed, the charge fails")
 			// Session 0's own retirable GETATTR, same session.
 			p.c.action("REQUEST", 0, "GETATTR "+p.path, 0)
 			p.c.action("REPLIES_DROP", 0, "", 0)
@@ -2354,6 +2355,30 @@ func TestControlledReceivedActualTicketPackageRetirement(t *testing.T) {
 			p.c.action("REPLIES_DROP", 0, "", 0)
 			p.expect(t, "PACKAGE_TICKET", 0, "", 0, 1)
 			p.expect(t, "PACKAGE_TICKET", 0, "", -28, 0)
+			p.c.close()
+		})
+	}
+}
+
+// 9n4 (zq3-r23 R23-1): two charges on m0 failed together. The first round
+// retired 5 requests and retried; the second waited for session->retirement
+// during that round, then found nothing retirable (own retire -11) although
+// the round it waited for had just freed requests, and failed the 1024-group
+// child's open ENOSPC. PACKAGE_REQUEST_BUSY reproduces that: session 0's
+// GETATTR charge fails, and a concurrent actual hfs_retire on session 0
+// holds the mutex when the caller's own round starts and retires session 0's
+// ROOT/CREATE. The caller must retry the charge (exactly one RETIRE, the
+// concurrent round's). With nothing retirable for the concurrent round
+// either (session 0's GETATTR result is held), it still refuses ENOSPC with
+// no native bytes.
+func TestControlledReceivedActualBusyRetirementRetry(t *testing.T) {
+	for _, protocol := range []guestbridge.Protocol{guestbridge.MappedProtocol(), guestbridge.TerminalProtocol()} {
+		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
+			p := newPackageRig(t, protocol)
+			p.expect(t, "PACKAGE_REQUEST_BUSY", 0, p.path, 0, 1)
+			p.logged(t, "own retire -11 freed 2 requests, 0 of 1 other sessions freed 0, ordinary lane; a concurrent round freed requests, retrying the charge once")
+			p.expect(t, "PACKAGE_REQUEST_BUSY", 0, p.path, -28, 0)
+			p.logged(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0, ordinary lane; nothing freed, the charge fails")
 			p.c.close()
 		})
 	}

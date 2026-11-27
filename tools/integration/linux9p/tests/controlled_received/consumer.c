@@ -25,6 +25,8 @@ ssize_t primitive_pwrite(int,const void *,size_t,off_t);
 static DEFINE_MUTEX(hfs_provider_lock);
 static const struct hfs_provider *hfs_provider;
 static atomic_t hfs_active_sessions = ATOMIC_INIT(0);
+/* 9n4: hfs_session.c's retirement generation (hfs_retire, hfs_retire_shared). */
+static atomic_t hfs_retired_rounds = ATOMIC_INIT(0);
 /* 6m4: hfs_session.c's global session list and hfs_retire_shared's wait.
  * Fixture sessions join the list only inside the PACKAGE_* actions
  * (share_sessions), so every other action keeps per-session retirement.
@@ -196,6 +198,32 @@ void primitive_after_mutex_unlock(struct mutex *lock) {
   assert(!request->users&&request->result&&request->terminal&&request->adopted&&!f->ordinary_result);
   assert(!hfs_request_result_borrow(request,&f->ordinary_result));assert(request->users==1);
  }
+}
+/* 9n4 (zq3-r23 R23-1): BUSY_RETIRE arms a concurrent retirement round on one
+ * session. The next mutex_lock of that session's retirement mutex (the
+ * PACKAGE_REQUEST caller's own hfs_retire inside hfs_retire_shared, after
+ * its charge failed) first starts a thread running the actual hfs_retire on
+ * the same session and waits (bounded) until that thread holds the mutex.
+ * The caller then waits for the whole round, exactly as r23's second round
+ * waited for the first: the round frees what was retirable, and the caller
+ * finds nothing left. busy_retire_err keeps the concurrent round's result. */
+static struct hfs_session *busy_retire_session;
+static atomic_int busy_retire_state; /* 0 idle, 1 armed, 2 started, 3 holds */
+static __thread bool busy_retire_self;
+static pthread_t busy_retire_thread;
+static int busy_retire_err;
+static void *busy_retire_round(void *arg) {
+ busy_retire_self=true;busy_retire_err=hfs_retire(arg);return NULL;
+}
+void primitive_mutex_lock(struct mutex *lock) {
+ bool target=busy_retire_session&&lock==&busy_retire_session->retirement;
+ if(target&&!busy_retire_self&&atomic_load(&busy_retire_state)==1){
+  atomic_store(&busy_retire_state,2);
+  assert(!pthread_create(&busy_retire_thread,NULL,busy_retire_round,busy_retire_session));
+  for(unsigned i=0;atomic_load(&busy_retire_state)!=3;i++){assert(i<10000);usleep(1000);}
+ }
+ assert(!pthread_mutex_lock(&lock->native));
+ if(target&&busy_retire_self&&atomic_load(&busy_retire_state)==2)atomic_store(&busy_retire_state,3);
 }
 static Hfs9p *carrier;
 static uuid_t primitive_supervised_controller;
@@ -1172,7 +1200,12 @@ static void command(char *line) {
   * claim, cell, request and byte counters unchanged; success must have
   * retired at least one request across the sessions and keeps the result
   * held (users) for a later refusal. */
- if(!strcmp(operation,"PACKAGE_REQUEST")){
+ /* 9n4 (zq3-r23 R23-1): PACKAGE_REQUEST_BUSY runs the same call while a
+  * concurrent round (BUSY_RETIRE above) holds the caller's retirement mutex
+  * when its own hfs_retire_shared round starts, so that round frees nothing
+  * itself; it joins the concurrent round afterwards. */
+ bool busy=!strcmp(operation,"PACKAGE_REQUEST_BUSY");
+ if(busy||!strcmp(operation,"PACKAGE_REQUEST")){
   struct hfs_session *session=f->session;void *pressure=NULL;
   u64 request_bytes=(hfs_controlled_consumed(session)?4ULL:16ULL)*1024*1024+sizeof(struct hfs_controlled_credit);
   u64 leave=request_bytes+(1ULL<<20);
@@ -1180,9 +1213,20 @@ static void command(char *line) {
   package_pressure(session,leave,&pressure);
   u64 next=session->next_claim,cell=session->next_cell,ordinary=hfs_controlled_ordinary_used;u32 requests=session->nr_requests,total=share_sessions(true);
   struct hfs_buf args={0};struct hfs_json *result=NULL;assert(!hfs_args_init(&args));args.len=decode_hex(line+consumed,args.data,args.cap);
+  if(busy){busy_retire_session=session;atomic_store(&busy_retire_state,1);}
   int err=hfs_call(session,"GETATTR",&args,&f->credential,false,&result);
+  if(busy){
+   /* The charge failed and the caller's round met the concurrent one. */
+   assert(atomic_load(&busy_retire_state)==3);assert(!pthread_join(busy_retire_thread,NULL));
+   atomic_store(&busy_retire_state,0);busy_retire_session=NULL;
+  }
   u32 after=share_sessions(false);
-  if(err){assert(err==-ENOSPC&&!result);assert(session->next_claim==next&&session->next_cell==cell&&session->nr_requests==requests&&after==total&&hfs_controlled_ordinary_used==ordinary);}
+  /* A refusal keeps nothing: no claim. A concurrent round's RETIRE takes a
+   * cell and may free requests and bytes, so with one the cell can only have
+   * advanced and the other counters only dropped. */
+  if(err){assert(err==-ENOSPC&&!result);assert(session->next_claim==next);
+   if(busy)assert(session->next_cell>=cell&&session->nr_requests<=requests&&after<=total&&hfs_controlled_ordinary_used<=ordinary);
+   else assert(session->next_cell==cell&&session->nr_requests==requests&&after==total&&hfs_controlled_ordinary_used==ordinary);}
   else{assert(session->next_claim==next+1&&after<=total&&result->owner);
    assert(f->nr_held_results<ARRAY_SIZE(f->held_results));f->held_results[f->nr_held_results++]=result;result=NULL;}
   hfs_controlled_unreserve(session,pressure);hfs_buf_free(&args);done(id,err,NULL,0);return;

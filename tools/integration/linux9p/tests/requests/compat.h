@@ -10,6 +10,9 @@
 typedef atomic_long atomic_long_t;
 #define atomic_long_read(p) atomic_load(p)
 #define atomic_long_inc(p) ((void)atomic_fetch_add((p),1))
+/* 9n4: hfs_retire advances hfs_session.c's retirement generation. */
+#define atomic_inc(p) ((void)atomic_fetch_add((p),1))
+static atomic_int hfs_retired_rounds;
 #include <stdio.h>
 #include <unistd.h>
 struct mutex { pthread_mutex_t native; };

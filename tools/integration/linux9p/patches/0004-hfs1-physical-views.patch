@@ -2609,7 +2609,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,2397 @@
+@@ -0,0 +1,2402 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -3003,14 +3003,19 @@ new file mode 100644
 + * held the bytes. Retiring requests returns only their own lane's bytes; a
 + * control ticket after ordinary retirements (or the reverse) still fails
 + * cleanly. Unretired view tickets are not offered here (hfs_view_retire).
++ *
++ * 9n4 (zq3-r23 R23-1): the retirement generation is read before the first
++ * attempt, so a concurrent round that freed requests meanwhile also earns
++ * the one retry (hfs_retire_shared).
 + */
 +static int hfs_view_ticket_charge(struct hfs_session *session, bool control, void **credit,
 +				  void **family_credit, struct hfs_completion **completion)
 +{
++	unsigned int since = hfs_retire_generation();
 +	int err = hfs_view_ticket_charge_once(session, control, credit, family_credit,
 +					      completion);
 +
-+	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire_shared(session))
++	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire_shared(session, control, since))
 +		err = hfs_view_ticket_charge_once(session, control, credit, family_credit,
 +						  completion);
 +	return err;

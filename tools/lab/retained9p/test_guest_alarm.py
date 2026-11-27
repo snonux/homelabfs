@@ -479,5 +479,65 @@ class CaseSyscallNamingTests(TwoRootsTestCase):
         self.assertEqual(events[-2]["args"], {"name": "ordinary", "open_flags": 0})
 
 
+class ChildSyscallNamingTests(TwoRootsTestCase):
+    """9n4 (zq3-r23 R23-1): a child's failure names the syscall that failed.
+
+    r23's 1024-group child reported only `[Errno 28] ... 'group-tail'`; the
+    case logic implied its open, but the evidence did not say so. Real forks
+    on a local directory, as in the yf4 tests above.
+    """
+
+    def child(self, action):
+        probe = guest.Probe(case_request("credentials"), self.roots, time.monotonic() + 240)
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            result, status = probe.child(action)
+        event = json.loads(printed.getvalue().splitlines()[-1])
+        self.assertEqual(event["observed"], result)
+        return result, status
+
+    def test_failed_open_names_open(self):
+        result, status = self.child(lambda: guest.read_child(self.roots[0], "missing"))
+        self.assertNotEqual(status, 0)
+        self.assertEqual((result["syscall"], result["errno"]), ("open", guest.errno.ENOENT))
+
+    def test_failed_read_names_read(self):
+        with open(os.path.join(self.temp, "m0", "present"), "w") as handle:
+            handle.write("present")
+        parent, real_read = os.getpid(), os.read
+
+        def refuse_in_child(fd, count):
+            # The parent reads the child's reply pipe through the same os.read.
+            if os.getpid() == parent:
+                return real_read(fd, count)
+            raise OSError(guest.errno.ENOSPC, "No space left on device")
+
+        with mock.patch.object(guest.os, "read", side_effect=refuse_in_child):
+            result, status = self.child(lambda: guest.read_child(self.roots[0], "present"))
+        self.assertNotEqual(status, 0)
+        self.assertEqual((result["syscall"], result["errno"]), ("read", guest.errno.ENOSPC))
+
+    def test_success_names_no_syscall(self):
+        with open(os.path.join(self.temp, "m0", "present"), "w") as handle:
+            handle.write("present")
+        result, status = self.child(lambda: guest.read_child(self.roots[0], "present"))
+        self.assertEqual((status, result["result"]), (0, "present"))
+        self.assertNotIn("syscall", result)
+
+    def test_failure_before_any_named_syscall_is_null(self):
+        """An action without a named step (or failing before it) says so."""
+        def refuse():
+            raise guest.Refused("no syscall yet")
+        result, status = self.child(refuse)
+        self.assertNotEqual(status, 0)
+        self.assertIsNone(result["syscall"])
+
+    def test_refusal_detail_names_the_child_syscall(self):
+        """The parent's refusal carries the child's syscall and errno."""
+        self.assertEqual(guest.child_cause({"error": "OSError", "errno": 28, "syscall": "open"}),
+                         " (child open errno 28)")
+        self.assertEqual(guest.child_cause({"uid": 0, "result": "ok"}), "")
+
+
 if __name__ == "__main__":
     unittest.main()
