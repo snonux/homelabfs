@@ -212,6 +212,18 @@ C7 adds these test-only commands, all invoking the maintained production helpers
   refuses ENOSPC with no native bytes, so no VIEW_ACQUIRE is granted
   without a release ticket. After another release it is granted, with a
   VIEW_RETIRE before its VIEW_ACQUIRE.
+* hp4 (zq3-r25 R25-1): `TestControlledReceivedActualHeldLeaseRetirement`
+  (`--scenario package`, mapped features) uses only existing commands.
+  Session 0 retires its ROOT, acquires and releases lease A through its
+  recall, leaves three GETATTRs retirable, then acquires lease B (same
+  credentials) and holds it, as T1's next observation held its lease. A
+  control `PACKAGE_TICKET` must succeed after a VIEW_RETIRE, logging `own
+  retire 0 freed 3 requests, view retire 0, 0 of 1 other sessions freed 0,
+  control lane used …; retrying the charge once`. Under gn4's
+  per-credential host rule it failed with r25's pair (`view retire -11`,
+  then `charge still failed after the retry: error -28`). With only B's own
+  tickets left, the next control `PACKAGE_TICKET` is refused ENOSPC with no
+  native bytes.
 * `CLOSE_PENDING` invokes actual provider STOP/retain while dirty pins, results
   and cookies remain. It asserts refusal preserves every owner; subsequent
   funded controls must use the typed closing path. It is no native unmount.

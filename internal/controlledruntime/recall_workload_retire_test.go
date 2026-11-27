@@ -86,6 +86,66 @@ func TestZQ3ChildRetireBesideHeldObservation(t *testing.T) {
 	}
 }
 
+// TestZQ3HolderRetiresBesideItsNextObservation replays zq3-r25 R25-1 (task
+// hp4, docs/lab/results/20261127-zq3-r25/README.md) in the recall workload
+// model.
+//
+// The T1 process ran its observations back to back. The guest's cleanup
+// worker releases an observation's lease only after hfs_mmap_end, so the
+// next observation of the same process usually acquired first: 8 of its
+// last 13 acquisitions shared the previous, still active lease. When the
+// worker then released the older holder and sent its VIEW_RETIREs, a lease
+// of T1's own credentials was always active, and gn4's per-credential rule
+// answered both of T1's families BLOCKED. 13 answered VIEW_RELEASE tickets
+// (about 25.5 MiB each in the guest) filled m0's control lane and the
+// retention inventory's lstat failed ENOSPC.
+//
+// hp4 makes the rule per ticket: the answered release retires at once. The
+// first acquisition still names the shared lease, which its next holder
+// keeps, so its family waits until that holder released too.
+func TestZQ3HolderRetiresBesideItsNextObservation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("assembles the runtime and replays two mount(8)s")
+	}
+	t.Parallel()
+	m := newRecallModelVirtual(t, readZQ3Values(t), recallModelLatency(t))
+	m.mount(0)
+	m.mount(1)
+	m.settle()
+	mount := m.mounts[0]
+	m.begin("R25-1: T1's next observation acquires before the last one is released")
+	t1 := m.process("T1", nil)
+	m.enterView(mount)
+	first, firstTicket := m.lease(mount, t1, mount.target)
+	next, nextTicket := m.lease(mount, t1, mount.target)
+	if first == nil || next == nil {
+		t.FailNow()
+	}
+	if first.ID != next.ID {
+		t.Fatalf("the next observation got lease %s, want the shared %s", next.ID, first.ID)
+	}
+	m.queueRelease(mount, t1, *first, firstTicket)
+	m.settle()
+	acquire, release := mount.familyIndex[t1.name+"/acquire"], mount.familyIndex[t1.name+"/control"]
+	if release == nil {
+		t.Fatal("T1's release family missing")
+	}
+	if release.floor != 1 {
+		t.Fatalf("T1's release floor %d beside its held observation, want 1 (its answered release)", release.floor)
+	}
+	if acquire.floor != 0 {
+		t.Errorf("T1's acquisition floor %d while its first ticket's shared lease is held, want 0", acquire.floor)
+	}
+
+	m.begin("the next observation's release retires the rest")
+	m.queueRelease(mount, t1, *next, nextTicket)
+	m.settle()
+	m.requireRetires(t, "RETIRED")
+	if acquire.floor != 2 || release.floor != 2 {
+		t.Errorf("T1's floors %d (acquisition) and %d (release) with no lease left, want 2 and 2", acquire.floor, release.floor)
+	}
+}
+
 // requireRetires requires every wait of the current step to have ended in
 // time and each of its VIEW_RETIREs (at least one) to have answered status.
 func (m *recallModel) requireRetires(t *testing.T, status string) {

@@ -881,11 +881,13 @@ func checkReceivedViewFloorBindings(t *testing.T, c *receivedCarrier, extended b
 	t.Helper()
 	count := 0
 	blocked := 0
-	var blockedKey string
-	floors := make(map[string]struct {
+	// Per family (session/anchor/nonce): its highest retired through and
+	// every result hash its RETIRED cuts covered.
+	type floor struct {
 		Through uint64
-		Hashes  []string `json:"result_hashes"`
-	})
+		Retired map[string]bool
+	}
+	floors := make(map[string]floor)
 	for cell, command := range c.commands {
 		if command.Op != "VIEW_RETIRE" {
 			continue
@@ -911,18 +913,24 @@ func checkReceivedViewFloorBindings(t *testing.T, c *receivedCarrier, extended b
 		var receipt guestbridge.VerificationReceiptV2
 		require(t, json.Unmarshal(fields["verification"], &receipt))
 		if receipt.Kind != "VIEW_FLOOR" {
-			if response.Payload.Status != "BLOCKED" || response.Payload.Floor != 0 || response.Payload.Proof != nil ||
-				command.Context != c.rig.peers[1].scope || cut.Through != 1 || len(cut.Hashes) != 1 || !bytes.Equal(mustRuntimeJSON(t, cut.Credentials), mustRuntimeJSON(t, c.rig.credentials)) {
-				t.Fatalf("unexpected actual blocked view cut: %s / %s", command.Payload, c.responses[cell])
+			// Until hp4 session 1's answered release 1 was BLOCKED here
+			// beside its second (same-credential) lease; any BLOCKED cut is
+			// now counted and refused below.
+			if response.Payload.Status != "BLOCKED" || response.Payload.Proof != nil {
+				t.Fatalf("unexpected actual unsigned view cut: %s / %s", command.Payload, c.responses[cell])
 			}
 			blocked++
-			blockedKey = key
 			continue
 		}
-		floors[key] = struct {
-			Through uint64
-			Hashes  []string `json:"result_hashes"`
-		}{cut.Through, cut.Hashes}
+		f := floors[key]
+		if f.Retired == nil {
+			f.Retired = map[string]bool{}
+		}
+		f.Through = max(f.Through, cut.Through) // c.commands is a map: any order
+		for _, hash := range cut.Hashes {
+			f.Retired[hash] = true
+		}
+		floors[key] = f
 		count++
 		fields["cell"] = mustRuntimeJSON(t, receipt.GuestCell)
 		fields["op"] = mustRuntimeJSON(t, "VIEW_RETIRE")
@@ -963,12 +971,14 @@ func checkReceivedViewFloorBindings(t *testing.T, c *receivedCarrier, extended b
 		}
 		return
 	}
-	if count != 5 || blocked != 1 {
+	// hp4 (zq3-r25 R25-1): session 1's control cut through its answered
+	// release 1, offered beside its second lease of the same credentials,
+	// is RETIRED by the per-ticket host rule. Until hp4 it was BLOCKED (five
+	// floors, one blocked cut) and the final control cut covered both
+	// releases; now release 1 retires on its own and the final cut covers
+	// release 2.
+	if count != 6 || blocked != 0 {
 		t.Fatalf("actual signed view floors/blocked cuts %d/%d", count, blocked)
-	}
-	final := floors[blockedKey]
-	if final.Through != 2 || len(final.Hashes) != 2 {
-		t.Fatalf("final control floor omitted real releases: %+v", final)
 	}
 	actual := make(map[string]bool)
 	for cell, command := range c.commands {
@@ -995,8 +1005,23 @@ func checkReceivedViewFloorBindings(t *testing.T, c *receivedCarrier, extended b
 			actual[reply.Payload.ID] = true
 		}
 	}
-	if len(actual) != 2 || !actual[final.Hashes[0]] || !actual[final.Hashes[1]] || final.Hashes[0] == final.Hashes[1] {
-		t.Fatalf("control floor differs from actual release replies: %v / %v", final.Hashes, actual)
+	// Session 1's control family: the one whose RETIRED cuts covered both
+	// actual release replies, ending at through 2.
+	control := false
+	for key, f := range floors {
+		if !strings.HasPrefix(key, c.rig.peers[1].scope.Session+"/") || f.Through != 2 || len(f.Retired) != 2 {
+			continue
+		}
+		covered := 0
+		for id := range actual {
+			if f.Retired[id] {
+				covered++
+			}
+		}
+		control = control || covered == 2
+	}
+	if len(actual) != 2 || !control {
+		t.Fatalf("control floor differs from actual release replies: %v / %v", floors, actual)
 	}
 }
 
@@ -2528,6 +2553,90 @@ func TestControlledReceivedActualControlLaneRetirement(t *testing.T) {
 	if n <= views || retire > acquire {
 		t.Fatalf("acquisition was not granted after a VIEW_RETIRE (retire cell %d, acquire cell %d, %d retirements)", retire, acquire, n-views)
 	}
+	c.close()
+}
+
+// hp4 (zq3-r25 R25-1, docs/lab/results/20261127-zq3-r25/README.md): with
+// gn4, T1's retention inventory `lstat` failed ENOSPC. m0's control lane
+// held 13 VIEW_RELEASE tickets of the T1 process (numbers 43-55 of its
+// release family, about 25.5 MiB each) beside the ~178 MB permanent base.
+// Each had been answered RELEASED, but the guest's cleanup worker releases
+// an observation's lease asynchronously, often only after the next
+// observation of the same process has acquired its own (8 of those 13
+// acquisitions shared the previous, still active lease). So whenever a VIEW_RETIRE arrived, a lease
+// of T1's credentials was active, and the host's per-credential rule
+// (gn4: retirementBlocked and factsLedger.checkRetire) answered every one
+// BLOCKED: `view retire -11`. The round freed three requests (ordinary
+// bytes), retried once, and the release ticket of the lstat's acquisition
+// failed again:
+//
+//	own retire 0 freed 3 requests, view retire -11, 0 of 1 other sessions freed 0, control lane used …; retrying the charge once
+//	charge still failed after the retry: error -28, control lane used …; the charge fails
+//
+// Here lease A is acquired and released through its recall (a GRANTED
+// acquisition and a RELEASED release ticket, both retirable and charged),
+// three GETATTRs are left retirable, and lease B of the same credentials is
+// acquired and held, as T1's next observation held its lease. A control
+// ticket short of control bytes must now succeed after the round's view
+// retirement: hp4's per-ticket rule refuses only a range with a GRANTED
+// acquisition whose lease a holder has not released, and A's tickets name
+// none. Negative: B's own tickets stay charged while B is held, so a second
+// control ticket with nothing else retirable is refused ENOSPC with no
+// native bytes.
+func TestControlledReceivedActualHeldLeaseRetirement(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	p := &packageRig{c: c}
+	request := func(op string, args any) []byte {
+		return c.action("REQUEST", 0, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+	}
+	root := receivedResult(t, request("ROOT", map[string]any{}))
+	var domain guestbridge.Capability
+	require(t, json.Unmarshal(c.action("ADOPT_ROOT", 0, "", 0), &domain))
+	// Retire the ROOT now, so the round below frees exactly the three
+	// GETATTRs (a held first request would stop hfs_retire at once).
+	c.action("REPLIES_DROP", 0, "", 0)
+	c.action("RETIRE", 0, "", 0)
+	recall := func() {
+		c.action("RELEASE_START", 0, "", 0)
+		for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+			c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
+			c.action("PHASE", 0, phase, 0)
+		}
+		c.action("RELEASE_DONE", 0, "", 0)
+	}
+	views := func() int {
+		n := 0
+		for _, command := range c.commands {
+			if command.Op == "VIEW_RETIRE" {
+				n++
+			}
+		}
+		return n
+	}
+	c.action("ACQUIRE", 0, "", 0) // lease A
+	recall()
+	for range 3 {
+		request("GETATTR", map[string]any{"object": root[0]})
+	}
+	c.action("REPLIES_DROP", 0, "", 0)
+	c.action("ACQUIRE", 0, "", 0) // lease B, held like T1's next observation
+	before := views()
+	// Not c.action: on a refusal, wait for r25's two lines before failing.
+	c.nextID++
+	id := c.nextID
+	c.write(fmt.Sprintf("PACKAGE_TICKET %d 0 control", id))
+	if code, _ := c.readUntil(id, false); code != 0 {
+		p.loggedRetryFailure(t, "control")
+		t.Fatalf("control ticket beside a held lease = %d want 0 (r25's round):\n%s", code, c.diagnostics.String())
+	}
+	if views() <= before {
+		t.Fatal("control ticket charge succeeded without a VIEW_RETIRE")
+	}
+	p.loggedUsage(t, "own retire 0 freed 3 requests, view retire 0, 0 of 1 other sessions freed 0", "control", "retrying the charge once", false)
+	p.expect(t, "PACKAGE_TICKET", 0, "control", -28, 0)
+	p.loggedUsage(t, "own retire -11 freed 0 requests, view retire -11, 0 of 1 other sessions freed 0", "control", "nothing freed, the charge fails", true)
+	recall() // lease B
 	c.close()
 }
 

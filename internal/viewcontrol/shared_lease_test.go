@@ -305,3 +305,32 @@ func TestSharedLeaseRevokedByRecallBeforeRelease(t *testing.T) {
 		t.Fatal("last holder release recalled again or kept a credit")
 	}
 }
+
+// TestSharedLeaseAcquisitionWaitsForLastHolder (hp4, zq3-r25 R25-1): two
+// acquisitions share one active DOMAIN READ lease. After the first holder's
+// release its answered release retires at once, but its acquisition still
+// names the shared lease, which the second holder keeps active, so a
+// VIEW_RETIRE through it stays BLOCKED until the last holder released too.
+func TestSharedLeaseAcquisitionWaitsForLastHolder(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	_, first := r.acquire(0, guestbridge.ViewAccess{Kind: "DOMAIN"}, "READ")
+	_, second := r.acquire(0, guestbridge.ViewAccess{Kind: "DOMAIN"}, "READ")
+	if first.Status != "GRANTED" || second.Status != "GRANTED" || first.Lease.ID != second.Lease.ID {
+		t.Fatalf("shared acquisitions %+v / %+v", first, second)
+	}
+	payload := map[string]any{"request": r.controlTicket(0), "lease": first.Lease}
+	released := r.view(0, "VIEW_RELEASE", payload)
+	if released.Status != "RELEASED" || !r.leaseActive(first.Lease) {
+		t.Fatalf("first holder release %+v (lease active %v)", released, r.leaseActive(first.Lease))
+	}
+	if raw := r.retireControl(0, 1, []string{released.ID}); !bytes.Contains(raw, []byte(`"status":"RETIRED"`)) {
+		t.Fatalf("first holder's answered release beside the shared lease: %s", raw)
+	}
+	if raw := r.retire(0, 1, []string{first.ID}); !bytes.Contains(raw, []byte(`"status":"BLOCKED"`)) {
+		t.Fatalf("retired the first acquisition while the shared lease is active: %s", raw)
+	}
+	r.lastHolderReleases(first.Lease)
+	if raw := r.retire(0, 2, []string{first.ID, second.ID}); !bytes.Contains(raw, []byte(`"status":"RETIRED"`)) {
+		t.Fatalf("acquisitions after the last holder released: %s", raw)
+	}
+}
