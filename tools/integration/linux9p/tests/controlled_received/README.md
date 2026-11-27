@@ -170,7 +170,27 @@ C7 adds these test-only commands, all invoking the maintained production helpers
   `hfs_retire_shared_note`'s line for session 1's two rounds: `own retire
   -11 freed 0 requests, 1 of 1 other sessions freed 2; retrying the charge
   once`, then `... 0 of 1 other sessions freed 0; nothing freed, the charge
-  fails`.
+  fails`. Since 9n4 each line has `, ordinary lane used N of L bytes, S of M
+  slots` before the `;`. The check requires the exact text around the
+  numbers. A refused charge's lane must have had less free than either
+  completion package (24 MiB) with slots to spare. A retried one must have
+  had at least that much free. `PACKAGE_TICKET ID SESSION control` charges
+  a control ticket instead, with the pressure on the control bytes, and
+  must log `control lane used …`.
+* `PACKAGE_REQUEST_BUSY ID SESSION ARGSHEX` (9n4, zq3-r23 R23-1) is
+  `PACKAGE_REQUEST` with a concurrent retirement round. When the caller's own
+  `hfs_retire_shared` round locks the session's retirement mutex, the mutex
+  primitive (`primitive_mutex_lock`) first starts a thread that runs the
+  actual `hfs_retire` on that session, and waits (at most 10 s) until it holds
+  the mutex. The caller then waits for the whole round. A refusal keeps no
+  claim; the round's RETIRE may advance the cell and free requests and bytes.
+  `TestControlledReceivedActualBusyRetirementRetry` (`--scenario package`):
+  session 0's call succeeds after exactly one RETIRE (the concurrent
+  round's), logging `own retire -11 freed 2 requests, 0 of 1 other sessions
+  freed 0, ordinary lane used … ; a concurrent round freed requests,
+  retrying the charge once`. When the round has nothing to retire either, the call
+  refuses ENOSPC with no native bytes (`... nothing freed, the charge
+  fails`).
 * `CLOSE_PENDING` invokes actual provider STOP/retain while dirty pins, results
   and cookies remain. It asserts refusal preserves every owner; subsequent
   funded controls must use the typed closing path. It is no native unmount.

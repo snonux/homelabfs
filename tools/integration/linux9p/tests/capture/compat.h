@@ -89,6 +89,8 @@ struct hfs_session {
 };
 static void hfs_process_exit_work(struct work_struct *work) { (void)work;abort(); }
 /* 6m4: hfs_view_ticket_charge retires on ENOSPC; this fixture has no
- * requests to retire, so the charge's refusal stands (as before 6m4). */
-static int hfs_retire_shared(struct hfs_session *session) { (void)session;return -EAGAIN; }
+ * requests to retire, so the charge's refusal stands (as before 6m4).
+ * 9n4: and no round ever advances the retirement generation. */
+static unsigned int hfs_retire_generation(void) { return 0; }
+static int hfs_retire_shared(struct hfs_session *session, bool control, unsigned int since) { (void)session;(void)control;(void)since;return -EAGAIN; }
 #endif

@@ -200,8 +200,14 @@ static int hfs_retire(struct hfs_session *s) {
    (void)s;
    return -EOPNOTSUPP;
 }
-/* 6m4: hfs_call_reserve's shared retirement; nothing retires here either. */
-static int hfs_retire_shared(struct hfs_session *s) {
+/* 6m4: hfs_call_reserve's shared retirement; nothing retires here either.
+ * 9n4: so the retirement generation never advances. */
+static unsigned int hfs_retire_generation(void) {
+   return 0;
+}
+static int hfs_retire_shared(struct hfs_session *s, bool control, unsigned int since) {
+   (void)control;
+   (void)since;
    return hfs_retire(s);
 }
 static struct hfs_view *hfs_view_get(struct hfs_session *s) {

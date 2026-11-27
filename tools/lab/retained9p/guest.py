@@ -584,8 +584,32 @@ class Probe:
         return result, status
 
 
+# 9n4 (zq3-r23 R23-1): the hfs syscall a child action is in. Child actions
+# stay plain syscalls (see the note above create_owned_file) but name each
+# step with child_step, so a failure's reply carries "syscall" (null when the
+# action failed before naming one, or names none). r23's 1024-group child
+# reported only `[Errno 28] ... 'group-tail'`.
+CHILD_SYSCALL = [None]
+
+
+def child_step(name):
+    """Child action: the next hfs syscall is name."""
+    CHILD_SYSCALL[0] = name
+
+
+def child_cause(observed):
+    """Suffix for a parent refusal: the failed child's syscall and errno."""
+    if "error" not in observed:
+        return ""
+    return f" (child {observed.get('syscall')} errno {observed.get('errno')})"
+
+
 def child_body(send, seconds, action, uid, gid, groups):
-    """Forked child: switch IDs, run action, write one JSON reply; never returns."""
+    """Forked child: switch IDs, run action, write one JSON reply; never returns.
+
+    A failure's reply names the child's last child_step as "syscall".
+    """
+    CHILD_SYSCALL[0] = None
     try:
         signal.alarm(seconds)
         if groups is not None:
@@ -601,6 +625,7 @@ def child_body(send, seconds, action, uid, gid, groups):
     except BaseException as failure:
         raw = json.dumps({"error": type(failure).__name__,
                           "errno": getattr(failure, "errno", None),
+                          "syscall": CHILD_SYSCALL[0],
                           "detail": str(failure)[:256]}).encode()
         os.write(send, raw)
         os._exit(1)
@@ -764,9 +789,16 @@ class Retention:
 
 
 def read_child(directory, name):
-    """Child action: open name read-only through the leaf fd and read it."""
+    """Child action: open name read-only through the leaf fd and read it.
+
+    Each step is named (child_step), then the close the context manager does.
+    """
+    child_step("open")
     with owned(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory) as fd:
-        return os.read(fd, 64).decode()
+        child_step("read")
+        data = os.read(fd, 64)
+        child_step("close")
+    return data.decode()
 
 
 # Case bodies. Every hfs syscall a case body issues in the parent goes through
@@ -774,7 +806,8 @@ def read_child(directory, name):
 # failed (yf4, zq3-r18: chown's EOPNOTSUPP surfaced only as a bare errno).
 # The syscall sequence is the same as before the wrapping; only invoke/reply
 # events were added. Actions that run in a forked child (p.child) stay plain:
-# their errno already comes back in the child's reply.
+# their errno already comes back in the child's reply, and since 9n4 each
+# names its syscall steps (child_step), so the reply also says which failed.
 EXCLUSIVE = os.O_CREAT | os.O_EXCL | os.O_RDWR
 
 
@@ -809,7 +842,8 @@ def credentials_groups(p, directory):
 
     allowed, status = p.child(access, 41001, 42001, [42001, 42002, 42003])
     checked(status == 0 and allowed["result"] == "group-secret" and
-            allowed["groups"] == [42001, 42002, 42003], "supplementary group access")
+            allowed["groups"] == [42001, 42002, 42003],
+            "supplementary group access" + child_cause(allowed))
     denied, status = p.child(access, 41001, 42001, [42001, 42003])
     checked(status != 0 and denied.get("errno") == errno.EACCES,
             "same UID different complete groups must deny")
@@ -826,7 +860,8 @@ def credentials_group_tail(p, directory):
 
     allowed, status = p.child(access_tail, 41001, 42001, full_groups)
     checked(status == 0 and allowed["groups"] == full_groups and
-            allowed["result"] == "full-group-tail", "all 1024 groups including final entry must survive")
+            allowed["result"] == "full-group-tail",
+            "all 1024 groups including final entry must survive" + child_cause(allowed))
     denied, status = p.child(access_tail, 41001, 42001, full_groups[:-1])
     checked(status != 0 and denied.get("errno") == errno.EACCES,
             "removing only the final supplementary group must deny")
@@ -850,8 +885,11 @@ def credentials_setgid(p, directory, leaf):
             # Child action: plain syscalls (see the note above create_owned_file).
             old = os.umask(0o027)
             try:
+                child_step("create-exclusive")
                 with owned("created", EXCLUSIVE, 0o666, dir_fd=sg) as fd:
+                    child_step("fstat")
                     value = os.fstat(fd)
+                    child_step("close")
                     return [value.st_uid, value.st_gid, stat.S_IMODE(value.st_mode)]
             finally:
                 os.umask(old)
@@ -873,8 +911,11 @@ def credentials_sticky(p, directory):
         p.call("fchmod", lambda: os.fchmod(sticky, 0o1777), name="sticky", mode=0o1777)
         with p.owned("create-exclusive", "owned", EXCLUSIVE, 0o666, dir_fd=sticky) as fd:
             p.call("fchown", lambda: os.fchown(fd, 41002, 42002), name="owned", uid=41002, gid=42002)
-        denied, status = p.child(lambda: os.unlink("owned", dir_fd=sticky),
-                                 41001, 42001, [42001, 42002])
+        def unlink():
+            child_step("unlink")
+            os.unlink("owned", dir_fd=sticky)
+
+        denied, status = p.child(unlink, 41001, 42001, [42001, 42002])
         checked(status != 0 and denied.get("errno") in {errno.EACCES, errno.EPERM},
                 "sticky directory owner denial")
 
@@ -937,10 +978,12 @@ def namespace(p):
             # Child action: plain syscalls (see the note above create_owned_file).
             libc = ctypes.CDLL(None, use_errno=True)
             before = os.readlink("/proc/self/ns/user")
+            child_step("unshare")
             if libc.unshare(0x10000000) != 0:  # CLONE_NEWUSER, Linux ABI
                 raise OSError(ctypes.get_errno(), "unshare(CLONE_NEWUSER)")
             after = os.readlink("/proc/self/ns/user")
             checked(before != after, "user namespace did not change")
+            child_step("open")
             try:
                 with owned("namespace", os.O_RDWR, dir_fd=directory):
                     pass

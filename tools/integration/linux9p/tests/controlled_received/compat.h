@@ -88,7 +88,10 @@ static inline void list_move_tail(struct list_head *p,struct list_head *h) { lis
 static inline void list_del_init(struct list_head *p) { list_del(p);INIT_LIST_HEAD(p); }
 #define DEFINE_MUTEX(name) struct mutex name = { PTHREAD_MUTEX_INITIALIZER }
 #define mutex_init(m) assert(!pthread_mutex_init(&(m)->native,NULL))
-#define mutex_lock(m) assert(!pthread_mutex_lock(&(m)->native))
+/* 9n4: every mutex_lock passes the consumer's primitive boundary, which can
+ * start a concurrent retirement round before the caller waits (BUSY_RETIRE). */
+extern void primitive_mutex_lock(struct mutex *);
+#define mutex_lock(m) primitive_mutex_lock(m)
 /* re4: hfs_view_retire_try. */
 #define mutex_trylock(m) (!pthread_mutex_trylock(&(m)->native))
 extern void primitive_after_mutex_unlock(struct mutex *);
@@ -265,6 +268,8 @@ static inline int atomic_read(const atomic_t *value) { return atomic_load(value)
  * ordering of each operation; wj4 updated only tests/view/compat.h, so this
  * consumer no longer compiled. */
 static inline void atomic_inc(atomic_t *value) { atomic_fetch_add(value,1); }
+/* 9n4: hfs_retire's full barrier before the retirement generation's increment. */
+#define smp_mb__before_atomic() atomic_thread_fence(memory_order_seq_cst)
 static inline int atomic_read_acquire(const atomic_t *value) { return atomic_load_explicit(value,memory_order_acquire); }
 static inline int atomic_dec_return_release(atomic_t *value) { return atomic_fetch_sub_explicit(value,1,memory_order_release)-1; }
 /* 6m4: hfs_retire_shared's pin array and pin release. */

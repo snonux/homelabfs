@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -2296,19 +2297,53 @@ func (p *packageRig) expect(t *testing.T, verb string, session int, args string,
 	}
 }
 
-// logged requires the consumer's stderr (pr_info_ratelimited in compat.h)
-// to hold hfs_retire_shared_note's line with this tail (km4, zq3-r22 R22-1:
-// the guest log must show whether the retire-and-retry path ran and what it
-// freed). The consumer's stderr is copied by its own goroutine, so the line
-// may arrive after the action's stdout reply: wait up to 10 s for it.
-func (p *packageRig) logged(t *testing.T, tail string) {
+// packageShort is less than either completion package a PACKAGE_* charge
+// needs (about 30.9 MiB for a request, 24.5 MiB for a view ticket) and more
+// than the PACKAGE_* pressure leaves free (the reservation plus 1 MiB, at
+// most 17 MiB): a lane with less free at the outcome could not fund the
+// charge, one with at least this much could.
+const packageShort = 24 << 20
+
+var laneUsage = regexp.MustCompile(`, (ordinary|control) lane used (\d+) of (\d+) bytes, (\d+) of (\d+) slots; `)
+
+// loggedUsage requires the consumer's stderr (pr_info_ratelimited in
+// compat.h) to hold hfs_retire_shared_note's line (km4, zq3-r22 R22-1: the
+// guest log must show whether the retire-and-retry path ran and what it
+// freed; 9n4, zq3-r23 R23-1: and which lane ran short, by how much). The
+// consumer's stderr is copied by its own goroutine, so the line may arrive
+// after the action's stdout reply: wait up to 10 s for it. head is the text
+// up to the lane, outcome the text after the `;`. Every
+// such line must name lane, show at most the limit used and (`short`)
+// less than packageShort free with slots to spare, so the bytes ran short,
+// or (!short) at least packageShort free after the retirement.
+func (p *packageRig) loggedUsage(t *testing.T, head, lane, outcome string, short bool) {
 	t.Helper()
-	want := "retired under charge pressure: " + tail
-	for deadline := time.Now().Add(10 * time.Second); !strings.Contains(p.c.diagnostics.String(), want); {
+	want := regexp.MustCompile(regexp.QuoteMeta("retired under charge pressure: "+head) +
+		`, ` + lane + ` lane used \d+ of \d+ bytes, \d+ of \d+ slots; ` + regexp.QuoteMeta(outcome))
+	for deadline := time.Now().Add(10 * time.Second); !want.MatchString(p.c.diagnostics.String()); {
 		if time.Now().After(deadline) {
-			t.Fatalf("missing retire-and-retry log line %q in:\n%s", tail, p.c.diagnostics.String())
+			t.Fatalf("missing retire-and-retry log line %q ... %s lane used ...; %q in:\n%s", head, lane, outcome, p.c.diagnostics.String())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	for _, line := range want.FindAllString(p.c.diagnostics.String(), -1) {
+		m := laneUsage.FindStringSubmatch(line)
+		number := func(i int) uint64 {
+			n, err := strconv.ParseUint(m[i], 10, 64)
+			require(t, err)
+			return n
+		}
+		used, limit, slots, slotLimit := number(2), number(3), number(4), number(5)
+		t.Logf("checked: %s", line)
+		if limit == 0 || used > limit || slots > slotLimit {
+			t.Fatalf("impossible lane usage in %q", line)
+		}
+		if short && (limit-used >= packageShort || slots >= slotLimit) {
+			t.Fatalf("refused charge's lane was not short of bytes: %q", line)
+		}
+		if !short && limit-used < packageShort {
+			t.Fatalf("retried charge's lane still short after retirement: %q", line)
+		}
 	}
 }
 
@@ -2326,10 +2361,11 @@ func TestControlledReceivedActualPackageRetirement(t *testing.T) {
 			// Session 1 has nothing to retire: session 0's ROOT/CREATE must go.
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, 0, 1)
 			// km4: the round is logged with what it freed.
-			p.logged(t, "own retire -11 freed 0 requests, 1 of 1 other sessions freed 2; retrying the charge once")
+			// 9n4: the line names the charge's byte lane and its usage.
+			p.loggedUsage(t, "own retire -11 freed 0 requests, 1 of 1 other sessions freed 2", "ordinary", "retrying the charge once", false)
 			// Session 1's GETATTR result stays held; session 0 has none left.
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, -28, 0)
-			p.logged(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0; nothing freed, the charge fails")
+			p.loggedUsage(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0", "ordinary", "nothing freed, the charge fails", true)
 			// Session 0's own retirable GETATTR, same session.
 			p.c.action("REQUEST", 0, "GETATTR "+p.path, 0)
 			p.c.action("REPLIES_DROP", 0, "", 0)
@@ -2354,6 +2390,34 @@ func TestControlledReceivedActualTicketPackageRetirement(t *testing.T) {
 			p.c.action("REPLIES_DROP", 0, "", 0)
 			p.expect(t, "PACKAGE_TICKET", 0, "", 0, 1)
 			p.expect(t, "PACKAGE_TICKET", 0, "", -28, 0)
+			// 9n4: a control ticket with the control bytes short and nothing
+			// retirable anywhere: the line names the control lane and its usage.
+			p.expect(t, "PACKAGE_TICKET", 0, "control", -28, 0)
+			p.loggedUsage(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0", "control", "nothing freed, the charge fails", true)
+			p.c.close()
+		})
+	}
+}
+
+// 9n4 (zq3-r23 R23-1): two charges on m0 failed together. The first round
+// retired 5 requests and retried; the second waited for session->retirement
+// during that round, then found nothing retirable (own retire -11) although
+// the round it waited for had just freed requests, and failed the 1024-group
+// child's open ENOSPC. PACKAGE_REQUEST_BUSY reproduces that: session 0's
+// GETATTR charge fails, and a concurrent actual hfs_retire on session 0
+// holds the mutex when the caller's own round starts and retires session 0's
+// ROOT/CREATE. The caller must retry the charge (exactly one RETIRE, the
+// concurrent round's). With nothing retirable for the concurrent round
+// either (session 0's GETATTR result is held), it still refuses ENOSPC with
+// no native bytes.
+func TestControlledReceivedActualBusyRetirementRetry(t *testing.T) {
+	for _, protocol := range []guestbridge.Protocol{guestbridge.MappedProtocol(), guestbridge.TerminalProtocol()} {
+		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
+			p := newPackageRig(t, protocol)
+			p.expect(t, "PACKAGE_REQUEST_BUSY", 0, p.path, 0, 1)
+			p.loggedUsage(t, "own retire -11 freed 2 requests, 0 of 1 other sessions freed 0", "ordinary", "a concurrent round freed requests, retrying the charge once", false)
+			p.expect(t, "PACKAGE_REQUEST_BUSY", 0, p.path, -28, 0)
+			p.loggedUsage(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0", "ordinary", "nothing freed, the charge fails", true)
 			p.c.close()
 		})
 	}

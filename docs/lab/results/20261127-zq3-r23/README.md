@@ -190,6 +190,17 @@ Ruled out:
   - fix the guest retry;
   - name the child syscall in guest.py;
   - record the guest budget.
+
+  **9n4 (cause proven, fixed in the guest kernel).** See [linux9p README, `9n4`](../../../../tools/integration/linux9p/README.md#a-round-that-waited-for-a-concurrent-retirement-retries-9n4).
+  - **The `-11` was not a busy mutex.** `hfs_retire` waits for `session->retirement` with a blocking `mutex_lock`. Its `-EAGAIN` means that nothing was retirable once it held the mutex, and such a round frees nothing.
+  - **What happened:** the second round counted `nr_requests` before it waited. It waited out the first round, which freed 5 requests, and then found nothing left. `freed 4` is the first round's 5 frees, less one request admitted meanwhile. `hfs_retire_shared` returned that `-EAGAIN`, so the charge failed with ENOSPC although its bytes had just been returned.
+  - **The timing caveat is settled.** The guest `dmesg` line `sched_clock: Marking unstable (15327372088, 46573846)<-(…)` at 15.37 s puts the printk clock at `CLOCK_MONOTONIC` + 46.57 ms. So the pair ran at monotonic 166.5003 s, 1.3 ms before the parent recorded child 3's exit (166.5016 s). The `-11` round was the child's own charge. The rate limit dropped nothing (three lines in all).
+  - **The fix:** a retirement generation that `hfs_retire` advances whenever it frees requests. A charge reads it before its attempt. `hfs_retire_shared` returns 0, so the charge retries once, when the generation moved even though its own round freed nothing. The km4 line now names the byte lane and its usage, and has the outcome `a concurrent round freed requests, retrying the charge once`. The counter is global, so another session's round can earn one spurious retry. That retry is bounded.
+  - **Red first:** controlled_received `TestControlledReceivedActualBusyRetirementRetry` reproduced r23's line (`own retire -11 freed 2 requests … nothing freed, the charge fails`, `-28`).
+  - **Done:** guest.py child replies now carry `"syscall"`, and the group refusals name the child's syscall and errno.
+  - **Guest budget usage:** r23's own usage cannot be recovered. Neither the guest sysfs snapshot nor the host OBSERVE carries guest lane counters, and the r23 line did not name the lane. The ordinary lane is the likely one.
+  - **For future runs (9n4 review round 1):** the km4/9n4 line now records the charged lane's usage when the outcome is decided: `<lane> lane used <bytes> of <limit> bytes, <slots> of <slot limit> slots`. These are the controlled provider's lane counters, so the next failure shows which lane ran short, by how much, and whether bytes or slots ran out.
+  - **Rebuild for r24:** the guest kernel only. The daemon and the exporter are unchanged.
 - **R23-2:** the operator's pre-window wait (above).
 - **Validated by this run:**
   - km4 (R22-1 fixed: `create(group-tail)` and its fd calls pass, no `VIEW_RETIRE` block);

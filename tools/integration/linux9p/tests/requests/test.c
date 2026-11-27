@@ -116,8 +116,12 @@ int main(void)
    assert(hfs_retire(&session) == -EAGAIN && gap_calls == 1 && !released);
    request->terminal=true;
    response_mode=0; fact_error=0;
+   /* 9n4: no round above freed a request, so none advanced the retirement
+    * generation (hfs_retire_shared's concurrent-round check); this one does. */
+   assert(atomic_load(&hfs_retired_rounds) == 0);
    assert(hfs_retire(&session) == 0 && fact_calls == 2 && released == 1);
    assert(session.nr_requests == 0 && list_empty(&session.requests));
+   assert(atomic_load(&hfs_retired_rounds) == 1);
    puts("PASS: production result-owner pin + concurrent retirement, held drain, wrong floor, blocked/gap and denied proof; no VFS/runtime proof");
    return 0;
 }

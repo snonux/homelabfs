@@ -3057,3 +3057,152 @@ Not covered:
 - The r23 candidate needs the daemon rebuilt for the fix, and the guest
   kernel for the log line. The exporter is unchanged.
 
+## A round that waited for a concurrent retirement retries (`9n4`)
+
+In zq3-r23 R23-1 ([run record](../../../docs/lab/results/20261127-zq3-r23/README.md#r23-1-the-1024-group-access-childs-open-of-group-tail-fails-enospc)),
+T1's 1024-group access child failed with ENOSPC. The guest log showed two
+km4 rounds on m0, 62 µs apart:
+
+```text
+[166.546877] ... own retire 0 freed 5 requests, 0 of 1 other sessions freed 0; retrying the charge once
+[166.546939] ... own retire -11 freed 4 requests, 0 of 1 other sessions freed 0; nothing freed, the charge fails
+```
+
+**The cause, from the evidence and the code:**
+
+- **`hfs_retire` never returns `-EAGAIN` for a busy mutex.** It takes
+  `session->retirement` with a blocking `mutex_lock`. Its `-EAGAIN` means
+  "nothing retirable": no request, a first request that is held, borrowed,
+  unadopted or not yet terminal, or a BLOCKED answer. An `-EAGAIN` round
+  frees no request.
+- **So `freed 4` next to `-11` comes from the other round.**
+  `hfs_retire_counted` reads `nr_requests` before it calls `hfs_retire`.
+  The second round read 5+ requests, waited on the mutex while the first
+  round retired 5, and then found nothing left. The count shows the first
+  round's 5 frees, less one request admitted meanwhile.
+- **The second charge failed although its bytes had just come back.**
+  `hfs_retire_shared` returned the second round's own `-EAGAIN`, because
+  m1 had nothing to retire either. So the charge failed with ENOSPC instead
+  of retrying.
+- **The failing round was the child's own charge.** The record's clock
+  caveat is settled by the guest `dmesg`. At 15.37 s, `sched_clock:
+  Marking unstable (15327372088, 46573846)<-(15378514205, -4569135)` was
+  logged. From then on, the printk clock is `CLOCK_MONOTONIC` + 46.57 ms
+  (`__gtod_offset`). So the pair ran at monotonic 166.5003 s, 1.3 ms before
+  the parent recorded the child's exit (166.5016 s). Both lines are in
+  the log: the rate limit (10 lines per 5 s per call site) dropped nothing
+  in a run with three lines. The other round was a concurrent charge on m0
+  (not identifiable from the evidence; the parent was blocked in the child
+  wait, so most likely a cleanup worker call).
+- **Which lane ran short cannot be determined from r23's data.** The km4
+  line named no lane. The guest's sysfs snapshot (`admission_v1`) and the
+  host OBSERVE carry no guest byte counters, so the guest budget usage at
+  the failure cannot be recorded from existing data either. The child's
+  open is an ordinary call. The admitted tuples also charge cleanup calls
+  to ordinary bytes (`hfs_call_control_bytes`). So the ordinary lane most
+  likely ran short, but the log does not prove it. From the next run on,
+  the line records the lane's usage (below).
+
+**The fix** (patch 0003 `hfs.h`, `hfs_session.c`; patch 0004
+`hfs_lease.c`; patch 0005 `hfs_controlled.h`, `hfs_controlled.c`):
+
+- `hfs_retire` advances a global retirement generation
+  (`hfs_retired_rounds`) after each round that freed requests. An
+  `smp_mb__before_atomic()` orders every unreserve before the increment,
+  because the unlocks before it are release-only.
+- `hfs_call_reserve` and `hfs_view_ticket_charge` read it
+  (`hfs_retire_generation`) before their first attempt. They pass it to
+  `hfs_retire_shared(session, control, since)`.
+- `hfs_retire_shared` returns 0 when nothing retired in its own round but
+  the generation has moved since `since`. In that case another round freed
+  requests after the caller's attempt failed. The caller still retries only
+  once, so a charge with nothing freed anywhere still fails cleanly with
+  ENOSPC.
+- The wait is unchanged. It is `hfs_retire`'s wait for the mutex, bounded
+  by the holder's exchange.
+- The km4 line names the charge's lane. With the controlled provider it
+  also records that lane's usage when the outcome is decided
+  (`hfs_controlled_lane_usage`, a snapshot under `hfs_controlled_lock`).
+  It shows the bytes used (control: including the permanent control base,
+  as `hfs_controlled_reserve_owned` compares them) of the lane's byte
+  limit, and the reservation slots used of the lane's slot half. Slots at
+  their limit with bytes to spare mean a slot shortage. Otherwise the bytes
+  ran short. The line also has a third outcome for a round that waited out
+  a concurrent round:
+
+```text
+9p-hfs: session <uuid> retired under charge pressure: own retire <errno> freed <n> requests, <k> of <m> other sessions freed <n>, <ordinary|control> lane used <bytes> of <limit> bytes, <slots> of <slot limit> slots; <outcome>
+```
+
+Without a controlled mount (no lane counters) the usage is left out:
+`…, <lane> lane; <outcome>`.
+
+The outcome is one of three:
+- `retrying the charge once`;
+- `a concurrent round freed requests, retrying the charge once` (busy,
+  waited);
+- `nothing freed, the charge fails`.
+
+The series was regenerated with `export.py --task 9n4` (0003 and 0004; the
+review round's lane usage also 0005).
+
+**Tests:**
+
+- **Guest, red first:** controlled_received `package` now also runs
+  `TestControlledReceivedActualBusyRetirementRetry`. The consumer's new
+  `PACKAGE_REQUEST_BUSY` works at the mutex primitive boundary
+  (`primitive_mutex_lock`, `compat.h`). When the caller's own round locks
+  its retirement mutex, the consumer starts a thread that runs the actual
+  `hfs_retire` on the same session. Once that thread holds the mutex, the
+  caller waits for the whole round, as r23's second round did.
+  - On the km4 series, both feature sets failed with r23's exact line
+    `own retire -11 freed 2 requests, 0 of 1 other sessions freed 0;
+    nothing freed, the charge fails` and `-28`.
+  - Now the call succeeds after exactly one RETIRE (the concurrent round's).
+    The line ends `ordinary lane; a concurrent round freed requests,
+    retrying the charge once`.
+  - **Negative:** when the concurrent round has nothing to retire, the call
+    still refuses with ENOSPC and no native bytes. Its line ends `nothing
+    freed, the charge fails`.
+  - Every log check (`loggedUsage`) matches the exact text around the
+    lane and its usage. For a refusal, the lane must have had less free
+    than either completion package (24 MiB) with slots to spare, so the
+    bytes ran short. For a retry, it must have had at least that much free.
+  - **Control lane:** `TicketPackageRetirement` ends with a control ticket
+    (`PACKAGE_TICKET … control`, with pressure on the control bytes) while
+    nothing is retirable. It is refused with ENOSPC, and its line names the
+    `control lane used … of … bytes`.
+- **`requests`:** the generation does not move for any failing
+  `hfs_retire` round (held, denied, wrong floor, BLOCKED, gap), and it moves
+  by one for the successful round.
+- **guest.py (`tools/lab/retained9p`):**
+  - a child action names each syscall step (`child_step`), and a failure's
+    child reply carries `"syscall"`: `open`, `read` or `close` for
+    `read_child`, and `null` before any step;
+  - the group-access refusals end with `(child <syscall> errno <n>)`;
+  - covered by `ChildSyscallNamingTests` (`test_guest_alarm.py`, real
+    forks).
+- **Other harnesses on the 9n4 series:**
+  - a fresh `prepare.py` tree applies it with fuzz zero, and `fs/9p/` and
+    `net/9p/` compile without warnings (`build.py --module-objects`);
+  - `tests/controlled`, `controlled_provider`, `requests`, `capture`,
+    `mount_hello`, `view` and `setattr` pass;
+  - controlled_received `--scenario both` passes every stage;
+  - the `tools/lab/retained9p` suite passes (445 tests).
+
+Not covered:
+
+- Only `hfs_retire` advances the generation. View-ticket retirement
+  (`hfs_view_retire`) and the hh4 abandon also return bytes but do not
+  count.
+- The generation is global, so another session's or the other lane's
+  round, which returned none of the caller's bytes, also earns the one
+  retry. That retry is spurious but bounded: it fails with ENOSPC as
+  before.
+- The usage line counts the provider's reservation slots and lane bytes.
+  It does not count a completion package's own slots
+  (`HFS_COMPLETION_SLOTS`), and it is logged only when the retire path
+  runs (rate-limited), not for every ENOSPC.
+- The r24 candidate needs the guest kernel rebuilt. The daemon and the
+  exporter are unchanged. guest.py ships with the tools.
+
