@@ -167,7 +167,10 @@ static int hfs_lease_release(struct hfs_session *session,struct hfs_lease *lease
  assert(lease->revoked);lease->released=true;return 0;
 }
 static void hfs_request_unhold(struct hfs_session *s,struct hfs_request *r) { (void)s;(void)r;abort(); }
-void hfs_view_ticket_put(struct hfs_view_ticket *ticket) { (void)ticket;abort(); }
+/* gn4: hfs_lease_acquire_ex always puts its release ticket, which is NULL
+ * once hfs_lease_own took it over; no test path puts an actual ticket.
+ */
+void hfs_view_ticket_put(struct hfs_view_ticket *ticket) { if (ticket) abort(); }
 static int hfs_request_drain(struct hfs_session *s,struct hfs_request *r,struct hfs_json **out) { (void)s;(void)r;(void)out;abort(); }
 static void hfs_dirty_mapping_error(struct hfs_view *v,struct hfs_dirty *d,int err) { (void)v;(void)d;mapping_error=err; }
 static void clean_page(struct hfs_view *view,struct address_space *mapping,unsigned int index)
@@ -1567,22 +1570,23 @@ static void xq_advance_unreadable(void)
  * exchange binds the actual payload); the host's reply is a full GRANTED
  * lease on another target; after the bind, the step hook truncates the
  * bound payload (in the kernel hfs_view_grant_moved's parse fails on
- * memory). hfs_lease_own records the release state it would own. Expected:
- * -EXDEV with the lease decoded and built unadopted (no candidate, no
- * provider check), owned for release, holding the terminal ticket; no
- * settle, no block.
+ * memory). gn4: the control release ticket it prepares before the
+ * VIEW_ACQUIRE is xq_release_credit; hfs_lease_own checks it receives that
+ * ticket and takes it over, as the kernel's does. Expected: -EXDEV with the
+ * lease decoded and built unadopted (no candidate, no provider check), owned
+ * for release, holding the terminal ticket; no settle, no block.
  */
 static unsigned int xq_owns;
 static struct hfs_view_ticket xq_release_credit={.control=true};
-static int hfs_lease_own(struct hfs_session *session,const struct hfs_cred *cred,
-                         const struct hfs_cap *description,struct hfs_lease *lease)
+static int hfs_lease_own(const struct hfs_cred *cred,const struct hfs_cap *description,
+                         struct hfs_view_ticket **release,struct hfs_lease *lease)
 {
- assert(session==test_session && cred && !description);
- xq_owns++;lease->release_ticket=&xq_release_credit;return 0;
+ assert(cred && !description && *release==&xq_release_credit);
+ xq_owns++;lease->release_ticket=*release;*release=NULL;return 0;
 }
 int hfs_view_ticket_prepare(struct hfs_session *session,const struct hfs_cred *cred,bool control,
                             struct hfs_view_ticket **ticket)
-{ assert(session==test_session && cred && !control);*ticket=&xq_ticket;return 0; }
+{ assert(session==test_session && cred);*ticket=control?&xq_release_credit:&xq_ticket;return 0; }
 int hfs_view_ticket_activate(struct hfs_view_ticket *ticket) { assert(ticket==&xq_ticket);return 0; }
 static void xq_unbind_ticket(void)
 {

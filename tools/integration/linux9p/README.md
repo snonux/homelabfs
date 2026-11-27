@@ -3374,6 +3374,13 @@ and 22 tickets (zq3-r23: 0 and 0).
     `hfs_retire_generation_advance`, and `tests/controlled` and `capture`
     needed a no-op `hfs_retire_shared_failed`. The controlled_received
     build selects the new functions.
+  - gn4 did not run `view --pressure`, which then failed to compile
+    (`hfs_lease_own` takes the release ticket instead of the session).
+    `gp4` adapted its fixtures: `hfs_view_ticket_prepare` hands out the
+    control release ticket, the `hfs_lease_own` fixture checks and takes it
+    over, and `hfs_view_ticket_put` accepts the NULL that is left. On a
+    fresh `prepare.py` tree `view --pressure` (sanitized and plain) and
+    `view` (sanitized and plain) pass.
 
 Not covered:
 
