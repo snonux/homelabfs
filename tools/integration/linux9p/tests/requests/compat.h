@@ -13,7 +13,8 @@ typedef atomic_long atomic_long_t;
 /* 9n4: hfs_retire advances hfs_session.c's retirement generation. */
 #define atomic_inc(p) ((void)atomic_fetch_add((p),1))
 #define smp_mb__before_atomic() atomic_thread_fence(memory_order_seq_cst)
-static atomic_int hfs_retired_rounds;
+/* unused in shims that compile no hfs_retire (dirty builds with -Werror) */
+static atomic_int hfs_retired_rounds __attribute__((unused));
 #include <stdio.h>
 #include <unistd.h>
 struct mutex { pthread_mutex_t native; };
