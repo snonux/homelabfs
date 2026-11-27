@@ -21,10 +21,11 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 r23 rebuild for zq3-r23 (21c49a55), built from
-# 21d8478 with the Fedora 45 go1.27.4 (km4: a domain-wide VIEW_RETIRE refusal
-# is answered BLOCKED; on top of the vj4/dh4/s64/hh4 daemon c7b89648 that
-# f21450ec and 2c85b230 carried); the window build reproduced it.
+# Daemon of the admitted xz3 r24 rebuild for zq3-r24 (c9500232), reused byte
+# for byte from the r23 rebuild 21c49a55: built from 21d8478 with the Fedora
+# 45 go1.27.4 (km4: a domain-wide VIEW_RETIRE refusal is answered BLOCKED; on
+# top of the vj4/dh4/s64/hh4 daemon c7b89648 that f21450ec and 2c85b230
+# carried); the window build reproduced it.
 ADMITTED_DAEMON_SHA256 = "43238fe9953dbb3659c18b05b18f04d514d06ed600a47f9247f5e91f24bab255"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
@@ -95,7 +96,7 @@ class FillerTests(unittest.TestCase):
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt from
-        # 21d8478 for the r23 rebuild on 2026-11-26 (earlier from 3081d31 for
+        # 21d8478 for the r23 rebuild on 2026-11-26, reused by r24 (earlier from 3081d31 for
         # the second r21 rebuild, reused by r22, from 91b9ee1 for the first r21 rebuild, from d71ae02 for r20, from e160370 for r19, from 633509e for r18, from 3430758 for r17, from 2f34b60 for r15, reused by r16, from b7d107b for xc4, reused by xd4, from
         # 1b0a306 for 5a4, from dfdcdd9 for b94,
         # from cc6beed for r84, from e92eaa1 for l84, from b869710 for y64,

@@ -1,5 +1,20 @@
 # xz3 r23 rebuild (2026-11-26): km4 BLOCKED answer to a held VIEW_RETIRE
 
+**Superseded on 2026-11-27** by the [r24 rebuild](../xz3-20261127-r24/README.md)
+(`c9500232…`, source `f6119d5`) for zq3-r24. zq3-r23 ran this candidate on
+2026-11-27, and T1 failed with
+[R23-1](../../../../../docs/lab/results/20261127-zq3-r23/README.md). Its
+daemon passed the f3 observer check and the create of R22-1 succeeded, but
+the 1024-group access child's open failed with ENOSPC. Its kernel's km4
+retire round had waited out a concurrent round on the same session, which
+freed the requests, then found nothing left to retire (-11) and failed the
+charge. 9n4 fixed this in the guest kernel only: such a round now earns the
+one retry. r24 rebuilt only the kernel and reused this candidate's daemon
+`43238fe9…`, window artifacts and exporter `8cadae40…` byte for byte. The
+tooling now refuses this manifest as superseded, and `FD_ATTR` holds
+`c9500232…` instead. This manifest still passes `package.py check` and
+`admit.py` under the `f6119d5` tooling.
+
 This candidate supersedes the [r22 rebuild](../xz3-20261126-r22/README.md)
 (`2c85b230…`, source `de9df35`). zq3-r22 ran it on 2026-11-26.
 [R22-1](../../../../../docs/lab/results/20261126-zq3-r22/README.md) stopped
