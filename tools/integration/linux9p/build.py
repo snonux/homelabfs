@@ -45,6 +45,76 @@ def tree_bytes(root):
                                                 for path in root.rglob('*'))
 
 
+# Objects that only exist under CONFIG_9P_FS_HOMELABFS_CONTROLLED (patch 0003's
+# fs/9p/Makefile). The controlled pass refuses to finish without each of them.
+CONTROLLED_OBJECTS = tuple('fs/9p/' + name + '.o' for name in (
+    'hfs_crypto_core', 'hfs_crypto_ed25519', 'hfs_enrollment', 'hfs_admission',
+    'hfs_controlled_artifacts', 'hfs_controlled'))
+
+
+def config_argv(source, out, state, mm_objects=False, controlled=False):
+    """scripts/config argv for one object pass in the O= directory out.
+
+    state is '--module' (module pass) or '--enable' (built-in). The controlled
+    pass must be built-in: 9P_FS_HOMELABFS_CONTROLLED depends on 9P_FS=y and
+    NET_9P_VIRTIO=y, so a modular pass silently drops it and every
+    CONFIG_9P_FS_HOMELABFS_CONTROLLED branch. The non-controlled argv is kept
+    byte-identical to the pre-dn4 builder so its .config and hashes stay put.
+    """
+    if controlled and state != '--enable':
+        raise ValueError('controlled pass needs built-in 9P (9P_FS=y)')
+    argv = [str(source / 'scripts/config'), '--file', str(out / '.config'),
+            state, 'NET_9P', state, 'NET_9P_VIRTIO', state, '9P_FS',
+            '--enable', '9P_FS_HOMELABFS', '--enable', 'CRYPTO_LIB_SHA256',
+            '--disable', '9P_FSCACHE', '--disable', '9P_FS_POSIX_ACL']
+    if controlled:
+        argv += ['--enable', '9P_FS_HOMELABFS_CONTROLLED']
+    # huge_memory.c is normally selected only under this symbol. Explicitly
+    # requesting its object with THP disabled compiles against stub headers.
+    if mm_objects:
+        argv += ['--enable', 'TRANSPARENT_HUGEPAGE', '--enable', 'SHMEM',
+                 '--enable', 'READ_ONLY_THP_FOR_FS']
+    return argv
+
+
+def log_warnings(log):
+    """Compiler/kbuild warning lines in a stage log (the controlled gate)."""
+    return [line for line in log.read_text(errors='replace').splitlines()
+            if 'warning:' in line]
+
+
+def controlled_objects(source, output, run):
+    """Second, separate pass: fs/9p/ and net/9p/ with CONTROLLED=y built in.
+
+    It uses its own O= directory (output/controlled) so the module pass tree,
+    its .config and its object hashes (and the --kernel-headers tree that
+    controlled_provider reads) are unchanged. Returns (artifacts, config sha);
+    artifact keys are relative to output, i.e. 'controlled/fs/9p/...'.
+    Refuses on a missing CONTROLLED symbol or object, or any warning.
+    """
+    out = output / 'controlled'
+    out.mkdir(mode=0o700)
+    make = ['make', '-j2', f'O={out}', 'ARCH=x86_64']
+    run(make + ['x86_64_defconfig'], 'controlled-defconfig')
+    run(config_argv(source, out, '--enable', controlled=True), 'controlled-config')
+    run(make + ['olddefconfig'], 'controlled-olddefconfig')
+    text = (out / '.config').read_text()
+    for symbol in ('9P_FS', '9P_FS_HOMELABFS', '9P_FS_HOMELABFS_CONTROLLED'):
+        if f'CONFIG_{symbol}=y\n' not in text:
+            raise SystemExit(f'refuse: controlled pass requires CONFIG_{symbol}=y')
+    run(make + ['fs/9p/', 'net/9p/'], 'controlled-objects')
+    warnings = log_warnings(output / 'controlled-objects.log')
+    if warnings:
+        raise SystemExit('refuse: controlled objects compiled with warnings:\n'
+                         + '\n'.join(warnings))
+    missing = [name for name in CONTROLLED_OBJECTS if not (out / name).is_file()]
+    if missing:
+        raise SystemExit('refuse: controlled objects not built: ' + ', '.join(missing))
+    artifacts = {str(path.relative_to(output)): sha(path)
+                 for part in ('fs/9p', 'net/9p') for path in (out / part).glob('*.o')}
+    return artifacts, sha(out / '.config')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
@@ -147,17 +217,8 @@ def main():
 
     make = ['make', '-j2', f'O={output}', 'ARCH=x86_64']
     run(make + ['x86_64_defconfig'], 'defconfig')
-    config = [str(source / 'scripts/config'), '--file', str(output / '.config')]
     state = '--module' if args.module_objects else '--enable'
-    config += [state, 'NET_9P', state, 'NET_9P_VIRTIO', state, '9P_FS',
-               '--enable', '9P_FS_HOMELABFS', '--enable', 'CRYPTO_LIB_SHA256',
-               '--disable', '9P_FSCACHE', '--disable', '9P_FS_POSIX_ACL']
-    # huge_memory.c is normally selected only under this symbol. Explicitly
-    # requesting its object with THP disabled compiles against stub headers.
-    if args.mm_objects:
-        config += ['--enable', 'TRANSPARENT_HUGEPAGE', '--enable', 'SHMEM',
-                   '--enable', 'READ_ONLY_THP_FOR_FS']
-    run(config, 'config')
+    run(config_argv(source, output, state, mm_objects=args.mm_objects), 'config')
     run(make + ['olddefconfig'], 'olddefconfig')
     if 'CONFIG_9P_FS_HOMELABFS=y\n' not in (output / '.config').read_text():
         raise SystemExit('refuse: selected guest code was not enabled')
@@ -178,12 +239,20 @@ def main():
     if args.mm_objects:
         for name in ('memory.o', 'gup.o', 'mremap.o', 'huge_memory.o'):
             artifacts['mm/' + name] = sha(output / 'mm' / name)
+    # The module pass cannot select CONTROLLED (it needs 9P_FS=y), so
+    # --module-objects adds a built-in pass that covers hfs_controlled.c and
+    # every CONFIG_9P_FS_HOMELABFS_CONTROLLED branch (dn4).
+    controlled_config = None
+    if args.module_objects:
+        controlled_artifacts, controlled_config = controlled_objects(source, output, run)
+        artifacts.update(controlled_artifacts)
     receipt = {
         'development_unfinished_mmap': json.loads((HERE / 'source.json').read_text()).get('unfinished_mmap_development', False),
         'source_inventory_sha256': sha(source / '.homelabfs-owned-source.json'),
         'compiler_files': compiler_bindings,
         'scope': 'upstream kernel object compilation; no module link, installed ELRepo ABI or runtime proof',
         'manifest_sha256': sha(HERE / 'source.json'), 'config_sha256': sha(output / '.config'),
+        'controlled_config_sha256': controlled_config,
         'artifacts': artifacts, 'cpus': cpus, 'rss_nominal_poll_ms': 250, 'disk_poll_seconds': 5,
         'memory_limit_bytes': MEMORY_MAX, 'disk_limit_bytes': DISK_MAX,
         'limits_note': 'RSS/disk polling records observed bounds; disk walks can delay RSS sampling; actual maximum gaps are recorded per stage; transient overshoot is possible',
