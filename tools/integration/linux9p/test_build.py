@@ -5,7 +5,9 @@ The controlled_objects() and main() tests replace every process boundary
 (subprocess, shutil.which, CPU affinity, disk/RSS probes) with fakes that
 write the .config and .o files a real build would, so the stage argv, the
 refusal messages and the inputs/config-binding/stages/receipt files are
-pinned without a pinned Linux tree, make or compiler.
+pinned without a pinned Linux tree, make or compiler. The StageRunner
+limit tests stub the clock, os.killpg and the RSS/disk samplers instead, so
+the RSS, disk and time kill paths run without a process or a real sleep.
 """
 import contextlib
 import io
@@ -455,6 +457,167 @@ class MainTests(unittest.TestCase):
         receipt = self.load('receipt.json')
         self.assertEqual(sorted(receipt['artifacts']), sorted(COMMON_OBJECTS + MM_OBJECTS))
         self.assertIsNone(receipt['controlled_config_sha256'])
+
+
+class Clock:
+    """time.monotonic/time.sleep stand-in: sleep(d) only advances now by d."""
+
+    def __init__(self, start=100.0):
+        self.now = start
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class RunningPopen:
+    """subprocess.Popen stand-in for a stage that runs until signalled.
+
+    poll() returns None while running (exit_after polls, else forever);
+    the killpg stub ends it with -signal. hang ignores SIGTERM so that
+    wait(timeout=5) times out and the SIGKILL fallback is taken.
+    """
+    current = None
+
+    def __init__(self, argv, cwd, stdout, stderr, env, start_new_session, preexec_fn,
+                 exit_after=None, hang=False):
+        stdout.write(b'stage output\n')
+        self.pid, self.code, self.polls = 5151, None, 0
+        self.exit_after, self.hang, self.waits = exit_after, hang, []
+        RunningPopen.current = self
+
+    def poll(self):
+        self.polls += 1
+        if self.exit_after is not None and self.polls > self.exit_after:
+            self.code = 0
+        return self.code
+
+    def wait(self, timeout=None):
+        self.waits.append(timeout)
+        if self.code is None and self.hang and timeout is not None:
+            raise build.subprocess.TimeoutExpired('make', timeout)
+        return self.code
+
+    @staticmethod
+    def killpg(pid, sig):
+        process = RunningPopen.current
+        process.killed = getattr(process, 'killed', []) + [(pid, sig)]
+        if not (process.hang and sig == build.signal.SIGTERM):
+            process.code = -sig
+
+
+class StageLimitTests(unittest.TestCase):
+    """Pins StageRunner.watch()/stop(): each limit kills only the stage's group.
+
+    No process runs and nothing sleeps: Popen, os.killpg, the clock and the
+    group_rss/tree_bytes samplers are all stubs.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.output = Path(self.tmp.name) / 'out'
+        self.output.mkdir()
+        self.clock = Clock()
+        self.disk_samples = []
+
+    def probe(self, values, log=None):
+        """A sampler stub returning values in turn; the last one repeats."""
+        values = list(values)
+
+        def sample(arg):
+            if log is not None:
+                log.append((self.clock.now, arg))
+            return values.pop(0) if len(values) > 1 else values[0]
+        return sample
+
+    def run_stage(self, rss, disk, **popen):
+        """Runs one 'objects' stage under stubs; printed lines go to self.stdout."""
+        runner = build.StageRunner(Path('/src'), self.output, Path('/budget'), {}, [0, 1])
+        self.stdout = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for target, value in (
+                    ('build.subprocess.Popen',
+                     lambda *a, **kw: RunningPopen(*a, **kw, **popen)),
+                    ('build.os.killpg', RunningPopen.killpg),
+                    ('build.time.monotonic', self.clock.monotonic),
+                    ('build.time.sleep', self.clock.sleep),
+                    ('build.group_rss', self.probe(rss)),
+                    ('build.tree_bytes', self.probe(disk, self.disk_samples))):
+                stack.enter_context(mock.patch(target, value))
+            stack.enter_context(contextlib.redirect_stdout(self.stdout))
+            runner(['make', 'fs/9p/'], 'objects')
+        return runner
+
+    def stage(self, rss=(1024,), disk=(0,), **popen):
+        """A stage that must be refused; returns (SystemExit message, record)."""
+        with self.assertRaises(SystemExit) as caught:
+            self.run_stage(rss, disk, **popen)
+        record = json.loads((self.output / 'stages.json').read_text())[-1]
+        self.assertEqual(json.loads(self.stdout.getvalue()), record)
+        return str(caught.exception.code), record
+
+    def assert_stopped(self, message, record, reason):
+        """The common kill-path contract for every limit."""
+        self.assertEqual(message, f'failed objects; retained evidence at {self.output}')
+        self.assertEqual(record['limit_reason'], reason)
+        self.assertEqual(record['exit'], -build.signal.SIGTERM)
+        self.assertEqual(RunningPopen.current.killed, [(5151, build.signal.SIGTERM)])
+        # stop() waits up to 5 s, then __call__ reaps the exit code.
+        self.assertEqual(RunningPopen.current.waits, [5, None])
+        self.assertEqual(json.loads((self.output / 'stages.json').read_text()), [record])
+        self.assertEqual((self.output / 'objects.log').read_bytes(), b'stage output\n')
+        self.assertFalse((self.output / 'receipt.json').exists())
+
+    def test_rss_limit_stops_stage(self):
+        message, record = self.stage(rss=(1024, build.MEMORY_MAX, build.MEMORY_MAX + 1))
+        self.assert_stopped(message, record, 'aggregate process-group RSS exceeds 2GiB')
+        self.assertEqual(record['peak_group_rss_bytes'], build.MEMORY_MAX + 1)
+        self.assertEqual(RunningPopen.current.polls, 3)
+        self.assertEqual(self.clock.sleeps, [0.25, 0.25])
+        self.assertEqual(record['seconds'], 0.5)
+        self.assertEqual(record['max_rss_sample_gap_seconds'], 0.25)
+
+    def test_disk_limit_is_sampled_every_five_seconds(self):
+        message, record = self.stage(disk=(0, build.DISK_MAX + 1))
+        self.assert_stopped(message, record, 'allocated root exceeds 8GiB')
+        # Disk is walked at start and again 5 s (20 RSS polls) later.
+        self.assertEqual(self.disk_samples, [(100.0, Path('/budget')),
+                                             (105.0, Path('/budget'))])
+        self.assertEqual(len(self.clock.sleeps), 20)
+        self.assertEqual(record['peak_group_rss_bytes'], 1024)
+
+    def test_time_limit_stops_stage_after_20_minutes(self):
+        message, record = self.stage()
+        self.assert_stopped(message, record, 'stage exceeds 20 minutes')
+        # The first poll strictly past 1200 s is at 1200.25 s.
+        self.assertEqual(len(self.clock.sleeps), 4801)
+        self.assertEqual(record['seconds'], 1200.25)
+
+    def test_last_exceeded_check_names_reason(self):
+        message, record = self.stage(rss=(build.MEMORY_MAX + 1,), disk=(build.DISK_MAX + 1,))
+        self.assert_stopped(message, record, 'allocated root exceeds 8GiB')
+        self.assertEqual(self.clock.sleeps, [])
+
+    def test_sigterm_ignored_escalates_to_sigkill(self):
+        message, record = self.stage(rss=(build.MEMORY_MAX + 1,), hang=True)
+        self.assertEqual(message, f'failed objects; retained evidence at {self.output}')
+        self.assertEqual(RunningPopen.current.killed, [(5151, build.signal.SIGTERM),
+                                                       (5151, build.signal.SIGKILL)])
+        self.assertEqual(record['exit'], -build.signal.SIGKILL)
+        self.assertEqual(record['limit_reason'], 'aggregate process-group RSS exceeds 2GiB')
+
+    def test_stage_within_limits_is_not_signalled(self):
+        runner = self.run_stage((2048,), (0,), exit_after=3)
+        record = runner.stages[-1]
+        self.assertFalse(hasattr(RunningPopen.current, 'killed'))
+        self.assertEqual((record['exit'], record['limit_reason'],
+                          record['peak_group_rss_bytes']), (0, None, 2048))
+        self.assertEqual(self.clock.sleeps, [0.25, 0.25, 0.25])
 
 
 if __name__ == '__main__':
