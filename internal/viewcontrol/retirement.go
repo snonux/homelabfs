@@ -25,16 +25,38 @@ import (
 // its deadline (-110), blocked the session, and the CREATE waiting for
 // session->retirement behind it failed ENOSPC after 33 s.
 //
-// Since gn4 (zq3-r24 R24-1) an active lease refuses there only the
-// retirement of its own credentials' families (CredentialDigest); an open
-// reservation still refuses domain-wide.
+// Since gn4 (zq3-r24 R24-1) a lease refused there only the retirement of
+// its own credentials' families, and since hp4 (zq3-r25 R25-1) only a range
+// holding a GRANTED acquisition of a lease that is still active
+// (GrantedLeaseID, as retirementBlocked); an open reservation still refuses
+// domain-wide.
 var ErrRetirementHeld = fmt.Errorf("%w: retirement refused while an active owner remains", fsapi.WouldBlock)
 
 // CredentialDigest is the credential hash a lease carries
 // (ViewLease.CredentialHash) for credentials c, as retirementBlocked
-// compares it. The runtime's physical retirement check uses it (gn4).
+// compares it. The runtime's physical retirement check uses it (gn4) to
+// find the retired family's tickets (hp4).
 func CredentialDigest(c guestbridge.Credentials) string {
 	return digest(c)
+}
+
+// GrantedLeaseID is the lease a ticket's current reply hands its holder: the
+// lease ID of a GRANTED VIEW_ACQUIRE or VIEW_RENEW, else "" (an answered
+// VIEW_RELEASE, a BLOCKED or cancelled acquisition, a DIRTY_* ticket). Only
+// such a ticket can still be used by a holder of that lease, and only while
+// the lease is active (hp4, retirementBlocked); the runtime's physical
+// retirement check applies the same rule.
+func GrantedLeaseID(current json.RawMessage) string {
+	var reply struct {
+		Status string
+		Lease  *struct {
+			ID string `json:"id"`
+		}
+	}
+	if json.Unmarshal(current, &reply) != nil || reply.Status != "GRANTED" || reply.Lease == nil {
+		return ""
+	}
+	return reply.Lease.ID
 }
 
 type retirement struct {
@@ -107,44 +129,47 @@ func blockedRetirement(f family) (json.RawMessage, error) {
 
 // retirementBlocked reports whether the range floor+1..through cannot be
 // retired yet: it is not exactly the family's next run of terminal tickets
-// with these protected terminal ids, a recall runs, or the credentials still
-// hold an active lease or an open reservation. A DIRTY_RESERVE with
-// protected BLOCKED history stays until CANCEL closed its promised number.
+// with these protected terminal ids, a recall runs, one of its tickets is a
+// GRANTED acquisition of a lease that is still active, or the
+// credentials hold an open reservation. A DIRTY_RESERVE with protected
+// BLOCKED history stays until CANCEL closed its promised number.
 //
-// Both coarse clauses date from the first ledger (k04) and are kept on
-// purpose (reviewed in task qe4 after zq3-r16 R16-1, where the answered
-// release tickets they keep charged filled Bounds.ControlTickets):
+// The recall and reservation clauses date from the first ledger (k04) and
+// are kept on purpose (reviewed in task qe4 after zq3-r16 R16-1):
 //
 //   - No retirement while a recall runs. Retiring runs compact(), which
 //     drops lease rows, lineage revisions, source cuts and recall-history
 //     UUIDs. Admissions already refuse to prune cuts during a recall
 //     (pruneSources), and compacting mid-recall has never been analysed or
 //     covered by recall, crash-replay and terminal-seal tests.
-//   - No retirement while the credentials hold an active lease or an open
-//     reservation. This is the host's only guard that the guest retires
-//     only tickets it no longer references: a GRANTED acquisition ticket of
-//     an active or shared lease must not be recycled while a holder may
-//     still use it. The physical side (controlledruntime
-//     factsLedger.checkRetire) refuses for the same reason; since km4 that
-//     refusal (ErrRetirementHeld) is answered BLOCKED too. Until gn4
-//     (zq3-r24 R24-1) it refused for any active lease of the domain; now,
-//     like this clause, only for one of the same credentials (an open
-//     reservation there still refuses domain-wide).
+//   - No retirement while the credentials hold an open reservation.
 //
-// A per-ticket rule could free answered releases sooner, but only together
-// with those tests, a matching facts check and a guest that re-sends a
-// BLOCKED VIEW_RETIRE (today hfs_view_retire does not retry, so a relaxed
-// host would free nothing until the next cleanup packet). Until then the zq3
-// spec sizes ControlTickets for the charge this rule leaves
-// (zq3_control_tickets_test.go).
+// The lease clause is the host's only guard that the guest retires only
+// tickets it no longer references: a GRANTED acquisition ticket of an active
+// or shared lease must not be recycled while a holder may still use it. It
+// was coarse until hp4: any active lease of the domain (k04), then of the
+// same credentials (gn4, zq3-r24 R24-1). In zq3-r25 (R25-1) that still
+// refused every VIEW_RETIRE of the busy T1 process: the guest's cleanup
+// worker releases an observation's lease asynchronously, often only after
+// the process's next observation has acquired its own (8 of T1's last 13
+// acquisitions shared the previous, still active lease), so a lease of T1's
+// credentials was active whenever its VIEW_RETIREs arrived, and 13 answered
+// VIEW_RELEASE tickets (about 25.5 MiB each in the guest) filled m0's
+// 512 MiB control lane. Since hp4 the clause is
+// per ticket, as qe4 foresaw (with the guest's re4 re-send of a BLOCKED
+// VIEW_RETIRE, a matching facts check and tests): only a GRANTED ticket
+// whose lease is still active (GrantedLeaseID) refuses. A shared lease stays
+// active until its last holder released it, so every holder's acquisition
+// waits for that. An answered VIEW_RELEASE names no lease, and an inactive
+// lease is never used again, so neither refuses; an inactive lease never
+// refused before hp4 either (only Active counted), so the rule only got
+// narrower. compact() keeps any lease row an unretired ticket still names,
+// and never an active one. The physical side (controlledruntime
+// factsLedger.checkRetire) applies the same per-ticket rule; since km4 its
+// refusal (ErrRetirementHeld) is answered BLOCKED too.
 func (c *Controller) retirementBlocked(scope guestbridge.Context, r retirement, f family) (bool, error) {
 	if r.Through > f.High || r.Through-f.Floor > 1024 || uint64(len(r.Hashes)) != r.Through-f.Floor || c.state.Recall != nil {
 		return true, nil
-	}
-	for _, lease := range c.state.Leases {
-		if lease.Active && lease.Lease.Scope == scope && lease.Lease.CredentialHash == digest(r.Credentials) {
-			return true, nil
-		}
 	}
 	for _, reservation := range c.state.Reservations {
 		if reservation.Status != "CLOSED" && reservation.Reservation.Scope == scope && equal(reservation.Reservation.Credentials, r.Credentials) {
@@ -165,6 +190,11 @@ func (c *Controller) retirementBlocked(scope guestbridge.Context, r retirement, 
 		}
 		if reply.ID != r.Hashes[n-f.Floor-1] {
 			return true, nil
+		}
+		if id := GrantedLeaseID(t.Current); id != "" {
+			if l, ok := c.state.Leases[id]; ok && l.Active {
+				return true, nil
+			}
 		}
 		if n == ^uint64(0) {
 			break

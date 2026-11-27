@@ -915,6 +915,38 @@ func TestDurableRenewReleaseRetirementCompactsOnlyClosedSources(t *testing.T) {
 	r.requireNewerFloor(ticket, description, first, renewed)
 }
 
+// TestRetirementIsPerTicket (hp4, zq3-r25 R25-1): an active lease refuses
+// the retirement of a range only when one of its tickets is that lease's
+// GRANTED acquisition. In r25 the busy T1 process held an observation
+// lease whenever its cleanup worker's VIEW_RETIREs arrived, and gn4's
+// per-credential rule answered every one BLOCKED until 13 answered
+// VIEW_RELEASE tickets filled m0's control lane. Here the first lease is
+// released and a second one of the same credentials stays active: the
+// answered release and the released lease's acquisition retire, a range
+// with the active lease's acquisition does not.
+func TestRetirementIsPerTicket(t *testing.T) {
+	r := newRig(t)
+	_, description := r.create(0, "per-ticket", false)
+	_, first := r.acquire(0, page(description, 0), "READ")
+	released := r.release(0, first.Lease)
+	if released.Status != "RELEASED" {
+		t.Fatalf("release %+v", released)
+	}
+	_, second := r.acquire(0, page(description, 0), "READ")
+	if second.Status != "GRANTED" || second.Lease.ID == first.Lease.ID {
+		t.Fatalf("second acquisition %+v", second)
+	}
+	if raw := r.retireControl(0, 1, []string{released.ID}); !bytes.Contains(raw, []byte(`"status":"RETIRED"`)) {
+		t.Fatalf("answered release beside the same credentials' active lease: %s", raw)
+	}
+	if raw := r.retire(0, 2, []string{first.ID, second.ID}); !bytes.Contains(raw, []byte(`"status":"BLOCKED"`)) {
+		t.Fatalf("retired the active lease's acquisition: %s", raw)
+	}
+	if raw := r.retire(0, 1, []string{first.ID}); !bytes.Contains(raw, []byte(`"status":"RETIRED"`)) {
+		t.Fatalf("released lease's acquisition beside the same credentials' active lease: %s", raw)
+	}
+}
+
 // requireNewerFloor runs the next lease of the same page past its own
 // retirement: it must get a new lease identity and fence, only the latest
 // receipt is kept, and the reopened ledger keeps all of that.

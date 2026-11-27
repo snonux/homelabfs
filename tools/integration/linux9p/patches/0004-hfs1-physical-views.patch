@@ -2609,7 +2609,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,2445 @@
+@@ -0,0 +1,2449 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -4038,7 +4038,8 @@ new file mode 100644
 + * lane after the 1024-group child's second VIEW_ACQUIRE was granted: the
 + * guest freed the lease locally, but the host kept it active with no
 + * release ticket. Nothing could release it, and the then domain-wide
-+ * retirement check (factsLedger.checkRetire, per credentials since gn4)
++ * retirement check (factsLedger.checkRetire; per credentials since gn4,
++ * per ticket since hp4)
 + * answered every later VIEW_RETIRE of m0 BLOCKED, so the host still held
 + * 22 tickets and 8 leases afterwards.
 + */
@@ -4209,9 +4210,11 @@ new file mode 100644
 +	 * before the VIEW_ACQUIRE is sent (see hfs_lease_own). A full control
 +	 * lane now refuses the acquisition ENOSPC with no host lease, and its
 +	 * charge's view retirement (hfs_retire_shared) runs before this
-+	 * acquisition's grant. The host refuses (BLOCKED) the retirement of a
-+	 * family whose credentials hold an active lease, so after the grant
-+	 * this caller's own families could never retire. An unused release
++	 * acquisition's grant. Under gn4's host rule a family whose credentials
++	 * held an active lease could not retire at all; since hp4 (zq3-r25
++	 * R25-1) the host refuses (BLOCKED) only a range holding the GRANTED
++	 * acquisition of a still active lease, so answered releases retire
++	 * even while this caller holds another lease. An unused release
 +	 * ticket is unnumbered and is put locally below.
 +	 */
 +	err = hfs_view_ticket_prepare(session, cred, true, &release);
@@ -4426,8 +4429,9 @@ new file mode 100644
 +}
 +
 +/* Check a VIEW_RETIRE reply for through. BLOCKED (with a null proof) sets
-+ * *refused: re4, the host refuses while any recall runs or while this
-+ * family's credentials hold an active lease (retirementBlocked). RETIRED at
++ * *refused: re4, the host refuses while any recall runs or while the range
++ * holds the GRANTED acquisition of a still active lease (retirementBlocked;
++ * per ticket since hp4, per credentials before). RETIRED at
 + * exactly through is handed to the provider's view_retirement. -EPROTO for
 + * any other reply.
 + */
@@ -5059,7 +5063,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2712 @@
+@@ -0,0 +1,2713 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -7069,8 +7073,9 @@ new file mode 100644
 + * ordinary Tickets bound (and an identity), a VIEW_RELEASE ticket against the
 + * shared ControlTickets bound. Before re4 the guest offered retirement only
 + * at the end of a cleanup packet and dropped a BLOCKED VIEW_RETIRE (the host
-+ * refuses while any recall runs or the family's credentials hold an active
-+ * lease, retirementBlocked), so tickets could stay charged until some later
++ * refuses while any recall runs or the range holds the GRANTED acquisition
++ * of a still active lease, retirementBlocked; until hp4 any active lease of
++ * the family's credentials), so tickets could stay charged until some later
 + * cleanup. hfs_view_retire now records the refusal (view->retire_blocked);
 + * this work re-sends it.
 + */

@@ -138,42 +138,80 @@ func releaseCases() []releaseCase {
 	}
 }
 
-// TestFactsRetireIsPerCredentials: retirement refuses with
+// addTicket stores ticket number of the family (scope, anchor "f", nonce,
+// credentials c) with operation op and current reply status, naming lease
+// (when not empty) as a GRANTED acquisition does.
+func addTicket(t *testing.T, l *factsLedger, scope guestbridge.Context, nonce string, c guestbridge.Credentials, number uint64, op, status, lease string) {
+	t.Helper()
+	if l.Tickets == nil {
+		l.Tickets = map[string]struct {
+			Scope                     guestbridge.Context
+			Request                   guestbridge.Ticket
+			Operation                 string
+			Payload, Current, Initial json.RawMessage
+		}{}
+	}
+	reply := map[string]any{"status": status, "lease": nil}
+	if lease != "" {
+		reply["lease"] = map[string]any{"id": lease}
+	}
+	current, err := json.Marshal(reply)
+	require(t, err)
+	entry := l.Tickets[scope.Session+nonce+string(rune('0'+number))]
+	entry.Scope, entry.Operation, entry.Current = scope, op, current
+	entry.Request = guestbridge.Ticket{Anchor: "f", Nonce: nonce, Number: number, Credentials: c}
+	l.Tickets[scope.Session+nonce+string(rune('0'+number))] = entry
+}
+
+// TestFactsRetireIsPerTicket: retirement refuses with
 // viewcontrol.ErrRetirementHeld (km4: the controller answers it BLOCKED
-// instead of a never-answered WouldBlock) while a lease of the retiring
-// family's own credentials is active, or any open reservation of the domain
-// remains, and passes once neither remains. gn4 (zq3-r24 R24-1): another
-// credential set's active lease no longer refuses it, nor does an active
-// lease of the same credentials in another domain.
-func TestFactsRetireIsPerCredentials(t *testing.T) {
+// instead of a never-answered WouldBlock) while the retired range holds a
+// GRANTED acquisition of a still active lease, or any open reservation of
+// the domain remains.
+//
+// hp4 (zq3-r25 R25-1): until hp4 any active lease of the family's own
+// credentials refused it (gn4; before gn4, any active lease of the domain).
+// In r25 the T1 process's guest cleanup released its observation leases
+// asynchronously, often only after its next observation had acquired, so a
+// lease of T1's credentials was active whenever its VIEW_RETIREs arrived,
+// and 13 answered RELEASED
+// tickets of its release family (about 25.5 MiB each in the guest) filled
+// m0's 512 MiB control lane. An answered release, and an acquisition whose
+// lease every holder released, name nothing a holder may still use.
+func TestFactsRetireIsPerTicket(t *testing.T) {
 	scope := guestbridge.Context{Session: "a"}
 	child := guestbridge.Credentials{FSUID: 41001, FSGID: 42001, Groups: []uint32{42001}}
-	retire := func(c guestbridge.Credentials) json.RawMessage {
-		raw, err := json.Marshal(map[string]any{"credentials": c, "through": 1})
+	retire := func(nonce string, through uint64) json.RawMessage {
+		raw, err := json.Marshal(map[string]any{"anchor": "f", "nonce": nonce, "credentials": child, "through": through})
 		require(t, err)
 		return raw
 	}
-	l, _, newer := releaseLedger(t) // newer: active, another credential set
-	if err := l.checkRetire(scope, retire(child)); err != nil {
-		t.Fatalf("retire beside another credential set's active lease: %v", err)
-	}
+	l, older, newer := releaseLedger(t) // older released, newer active
 	newer.CredentialHash = viewcontrol.CredentialDigest(child)
 	setLease(&l, newer, true)
-	if err := l.checkRetire(scope, retire(child)); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
-		t.Fatalf("retire beside the family's own active lease: %v", err)
+	// The child's acquisitions 1 (older, released) and 2 (newer, held), and
+	// its answered release of older.
+	addTicket(t, &l, scope, "acquire", child, 1, "VIEW_ACQUIRE", "GRANTED", older.ID)
+	addTicket(t, &l, scope, "acquire", child, 2, "VIEW_ACQUIRE", "GRANTED", newer.ID)
+	addTicket(t, &l, scope, "release", child, 1, "VIEW_RELEASE", "RELEASED", "")
+	check := func(name string, raw json.RawMessage, want bool) {
+		t.Helper()
+		err := l.checkRetire(scope, raw)
+		if want && !errors.Is(err, viewcontrol.ErrRetirementHeld) || !want && err != nil {
+			t.Errorf("%s: %v, want held %v", name, err, want)
+		}
 	}
-	if err := l.checkRetire(guestbridge.Context{Session: "b"}, retire(child)); err != nil {
-		t.Fatalf("retire beside the same credentials' lease of another domain: %v", err)
+	check("answered release beside the family's own active lease (r25)", retire("release", 1), false)
+	check("released acquisition beside the family's own active lease", retire("acquire", 1), false)
+	check("range with the acquisition of the active lease", retire("acquire", 2), true)
+	if err := l.checkRetire(guestbridge.Context{Session: "b"}, retire("acquire", 2)); err != nil {
+		t.Errorf("retire in another domain beside this domain's active lease: %v", err)
 	}
-	l.Leases = nil
 	addReservation(&l, "older", "RESERVED")
-	if err := l.checkRetire(scope, retire(child)); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
-		t.Fatalf("retire beside an open reservation: %v", err)
-	}
+	check("answered release beside an open reservation", retire("release", 1), true)
 	l.Reservations = nil
-	if err := l.checkRetire(scope, retire(child)); err != nil {
-		t.Fatalf("retire with no owner left: %v", err)
-	}
+	l.Leases = nil
+	check("acquisitions with no owner left", retire("acquire", 2), false)
 	if err := l.checkRetire(scope, json.RawMessage(`{`)); err == nil {
 		t.Fatal("retire with an undecodable request passed")
 	}

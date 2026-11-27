@@ -287,23 +287,45 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 // worker), so in zq3-r22 (R22-1) one child's VIEW_RETIRE beside another
 // process's active observation lease blocked m0.
 //
-// gn4 (zq3-r24 R24-1): an active lease refuses only the retirement of its
-// own credentials' families, the rule the controller's retirementBlocked
-// already applies: those are the tickets a holder may still use. Until gn4
-// any active lease of the domain refused every retirement. In r24 the
-// 1024-group access child held its own observation lease while its next
-// release ticket was charged, so the released tickets of the T1 process
-// and children 1 and 2 (12 VIEW_RELEASE tickets, about 321 MB of m0's
-// 512 MiB guest control lane) could not be retired and the charge failed
-// ENOSPC. An open dirty reservation still refuses domain-wide.
+// gn4 (zq3-r24 R24-1): an active lease refused only the retirement of its
+// own credentials' families. Until gn4 any active lease of the domain
+// refused every retirement. In r24 the 1024-group access child held its own
+// observation lease while its next release ticket was charged, so the
+// released tickets of the T1 process and children 1 and 2 (12 VIEW_RELEASE
+// tickets, about 321 MB of m0's 512 MiB guest control lane) could not be
+// retired and the charge failed ENOSPC.
+//
+// hp4 (zq3-r25 R25-1): the lease rule is per ticket, as the controller's
+// retirementBlocked: only a retired-range ticket that is a GRANTED
+// acquisition (viewcontrol.GrantedLeaseID) of a still active lease refuses.
+// Those are the tickets a holder may still use; a shared lease stays active
+// until its last holder released it. An inactive lease never refused, before
+// hp4 either. In r25 the per-credential rule still refused every
+// VIEW_RETIRE of the busy T1 process: the guest releases an observation's
+// lease asynchronously, often only after the process's next observation
+// has acquired its own, so a lease of T1's credentials was active whenever
+// they arrived, and its 13 answered VIEW_RELEASE tickets filled m0's
+// control lane. The range is every
+// ticket of the retired family (scope, anchor, nonce, credentials) numbered
+// up to through; those at or below the floor were checked when it moved.
+// An open dirty reservation still refuses domain-wide.
 func (l factsLedger) checkRetire(scope guestbridge.Context, raw json.RawMessage) error {
-	var r struct{ Credentials guestbridge.Credentials }
+	var r struct {
+		Anchor, Nonce string
+		Credentials   guestbridge.Credentials
+		Through       uint64
+	}
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return err
 	}
 	credentials := viewcontrol.CredentialDigest(r.Credentials)
-	for _, lease := range l.Leases {
-		if lease.Lease.Scope == scope && lease.Active && lease.Lease.CredentialHash == credentials {
+	for _, t := range l.Tickets {
+		if t.Scope != scope || t.Request.Anchor != r.Anchor || t.Request.Nonce != r.Nonce ||
+			t.Request.Number > r.Through || viewcontrol.CredentialDigest(t.Request.Credentials) != credentials {
+			continue
+		}
+		id := viewcontrol.GrantedLeaseID(t.Current)
+		if lease, ok := l.Leases[id]; id != "" && ok && lease.Active {
 			return viewcontrol.ErrRetirementHeld
 		}
 	}

@@ -715,7 +715,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,4273 @@
+@@ -0,0 +1,4280 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -4834,11 +4834,18 @@ new file mode 100644
 + * tuples (hfs_call_control_bytes), so the one request it freed returned
 + * none of the missing control bytes and the retry failed. The view round
 + * waits for session->retirement as hfs_retire does (bounded by the holder's
-+ * exchange). The host answers a family's VIEW_RETIRE BLOCKED while a lease
-+ * of the same credentials is active or a dirty reservation of the session
-+ * is open (factsLedger.checkRetire, per credentials since gn4; before, any
-+ * active lease of the session refused every family). If those hold the
-+ * lane, the charge fails as before. Other sessions' view tickets are not
++ * exchange). The host answers a family's VIEW_RETIRE BLOCKED while its
++ * range holds the GRANTED acquisition of a still active lease or a dirty
++ * reservation of the session is open (retirementBlocked and
++ * factsLedger.checkRetire). hp4 (zq3-r25 R25-1): until hp4 any active lease
++ * of the same credentials refused (gn4; before, any active lease of the
++ * session). The cleanup worker releases an observation's lease
++ * asynchronously, often only after the process's next observation acquired
++ * its own, so a busy process held one whenever its VIEW_RETIREs arrived,
++ * and in r25 13 of T1's answered VIEW_RELEASE tickets filled m0's
++ * control lane (`view retire -11`, then `charge still failed after the
++ * retry`). If tickets of active leases or an open reservation hold the
++ * lane, the charge still fails. Other sessions' view tickets are not
 + * offered.
 + */
 +int hfs_retire_shared(struct hfs_session *session, bool control, unsigned int since)

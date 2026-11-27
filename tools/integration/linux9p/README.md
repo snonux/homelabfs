@@ -3334,7 +3334,8 @@ and 22 tickets (zq3-r23: 0 and 0).
   beside another process's active lease, and the holder's own families
   only after its release. On the km4 rule it failed with `m0 access child
   1 cleanup VIEW_RETIRE answered BLOCKED, want RETIRED`.
-  `TestFactsRetireIsPerCredentials` replaces
+  `TestFactsRetireIsPerCredentials` (replaced by hp4's
+  `TestFactsRetireIsPerTicket`) replaces
   `TestFactsRetireStaysDomainWide`. It covers an active lease of other
   credentials (passes), of the same credentials (held), of the same
   credentials in another domain (passes), an open reservation (held),
@@ -3398,4 +3399,192 @@ Not covered:
 - The 178 MB of permanent control charge was not decoded byte by byte.
 - The r25 candidate needs the guest kernel (0003/0004) and the daemon
   (facts.go, retirement.go) rebuilt. The exporter is unchanged.
+
+## Answered releases retire beside the process's next lease (`hp4`)
+
+In zq3-r25 R25-1 ([run record](../../../docs/lab/results/20261127-zq3-r25/README.md#r25-1-r24-1-again-on-the-control-lane-the-retention-inventorys-lstat-fails-enospc-gn4s-round-frees-nothing-on-the-control-lane-and-logs-charge-still-failed-after-the-retry)),
+T1's probe syscalls all passed with gn4, but the retention inventory's
+`lstat` of `setgid/created` failed ENOSPC. m0 logged:
+
+```text
+own retire 0 freed 3 requests, view retire -11, 0 of 1 other sessions freed 0, control lane used 526509074 of 536870912 bytes, 371 of 512 slots; retrying the charge once
+charge still failed after the retry: error -28, control lane used 526509074 of 536870912 bytes, 371 of 512 slots; the charge fails
+```
+
+The host's view controller held 0 leases and 0 tickets at the failure
+OBSERVE.
+
+**The cause, from the controller ledger and the code.** The live
+`viewcontrol-v1.db` in `credentials-owner-live.tar` keeps older copies of
+the state JSON in its free pages. Four full copies were decoded read-only
+(no bbolt, a JSON scan of the file).
+
+- **What held the control lane: 13 VIEW_RELEASE tickets of the T1
+  process.** The oldest copy shows both of T1's families (credential hash
+  `a8d02f36…`) at floor 42 and high 55:
+  - acquisitions 43-55, all GRANTED;
+  - releases 43-55, all RELEASED;
+  - 5 lease rows, all inactive, with no recall and no reservation.
+  No other family had an unretired ticket. 13 × 26,786,357 bytes (one
+  release ticket with its view package, measured in the controlled_received
+  harness) is 348,222,641 bytes. Next to the permanent base of 178,286,433
+  bytes, that is exactly the logged 526,509,074. r24 also logged 13 tickets'
+  worth (526,456,646, base 178,234,005). The lane holds at most 13 such
+  tickets beside the base, so the 14th charge fails.
+  - They were view tickets, not requests: requests are charged to the
+    ordinary lane (`hfs_call_control_bytes`).
+  - Ordinary-lane copies: the 13 GRANTED acquisitions (about 348 MB) are why
+    the ordinary rounds at 246.57 s and 294.66 s found 304 MB and 449 MB used.
+- **Why the host showed 0/0.** The next copy has the acquisition family at
+  55 and the release family still at 42, which is the state between the two
+  VIEW_RETIREs of one cleanup round. The current state has both at 55 with
+  no ticket and no lease. So once T1 stopped (it exited about 6 s after the
+  failure), the cleanup worker's VIEW_RETIREs were answered RETIRED and
+  `hfs_view_retire_free` returned the guest charges. Nothing leaked, and
+  the guest accounting was right. The failure OBSERVE came about 25 s later.
+- **Why `view retire -11`.** `hfs_view_retire` returns -EAGAIN when no
+  family's floor advanced. It takes `session->retirement` with a blocking
+  `mutex_lock`, so -11 is never lock contention. It is not a family in
+  flight either. Tickets 43 of both families were terminal and unused long
+  before the failure (their cleanup packet released and freed lease 43), so
+  the round did send VIEW_RETIREs, and the host answered BLOCKED. Of
+  `retirementBlocked`'s clauses (and `factsLedger.checkRetire`'s):
+  - no recall ran (the last ended at 15:47:04Z, the failure was at about
+    15:47:44Z);
+  - no reservation existed;
+  - so the cause was gn4's per-credential lease clause: a lease of T1's
+    credentials was active.
+- **Why one always was.** The guest's cleanup worker releases an
+  observation's lease asynchronously, after `hfs_mmap_end`, while the
+  process goes on with its next syscall. In the ledger, 8 of the 13
+  acquisitions (47-51 on lease `38fc1507…`, 53-55 on `63eef710…`) were
+  granted the previous observation's still active lease (`shareLease`), so
+  its release had not reached the host yet. Each cleanup's VIEW_RETIRE, each
+  re4 kick and each charge-pressure round therefore met T1's next lease:
+  - the ordinary rounds ran inside an observation, with the caller's own
+    lease published;
+  - the failing control round was the `lstat`'s release-ticket charge,
+    before its VIEW_ACQUIRE, with the previous observation's lease still
+    active.
+  From floor 42 on, no VIEW_RETIRE of T1's families got a moment without a
+  T1 lease. (Which earlier moment let the floor reach 42, for example a
+  child wait, the ledger does not say: it keeps no timestamps.)
+- **gn4's prediction is refuted.** gn4 predicted that live leases'
+  up-front release tickets (about 20) would fill the lane. In fact the lane
+  holds 13 tickets beside the base, and the 13 were answered releases (all
+  RELEASED, all leases inactive in the ledger), with at most the newest one
+  or two still live at the failure. Charging before the grant added at most
+  those; the answered, unretired ones filled the lane.
+
+**The fix** (host only; `internal/viewcontrol/retirement.go`,
+`internal/controlledruntime/facts.go`; the daemon must be rebuilt):
+
+- `retirementBlocked` no longer refuses for any active lease of the
+  family's credentials. Inside its per-number loop it refuses a range only
+  when one of its tickets is a GRANTED acquisition (`GrantedLeaseID`) of a
+  lease that is still active. A shared lease stays active until its last
+  holder released it, so each holder's acquisition waits for that.
+- An answered VIEW_RELEASE names no lease, and an inactive lease is never
+  used again, so neither refuses. An inactive lease (quiesced by a recall,
+  or renewed) never refused before hp4 either, so the rule only got
+  narrower. `compact()` still keeps every lease row an unretired ticket
+  names, and never drops an active one.
+- `factsLedger.checkRetire` applies the same rule to every ledger ticket of
+  the retired family (scope, anchor, nonce, credentials) numbered up to
+  `through`.
+- The recall clause and the open-reservation clause (per credentials in
+  the controller, domain-wide in the facts check) are unchanged.
+- This is the per-ticket rule that qe4 deferred in `retirementBlocked`'s
+  comment. It needed tests, a matching facts check and a guest that
+  re-sends a BLOCKED VIEW_RETIRE; re4 is that guest.
+- With it, each cleanup round retires T1's release family up to its newest
+  answered release, beside T1's next lease. Its acquisitions retire up to
+  the first one whose lease is still active. In r25 that would have been at
+  most 6 back (the 46-51 chain).
+- Guest: comments only (patch 0003 `hfs_session.c`; patch 0004
+  `hfs_lease.c`, `hfs_mmap.c`), which described the per-credential rule. The
+  series was regenerated with `export.py --task hp4`.
+
+**Tests:**
+
+- **Guest harness, red first:** controlled_received `package` runs the new
+  `TestControlledReceivedActualHeldLeaseRetirement` (mapped features).
+  - Setup: lease A is acquired and released through its recall, leaving a
+    GRANTED acquisition and a RELEASED release ticket. Three GETATTRs are
+    left retirable. Lease B, with the same credentials, is acquired and
+    held.
+  - Then a control `PACKAGE_TICKET` is charged. On the gn4 daemon rule it
+    failed with `control ticket beside a held lease = -28 want 0`, logging
+    r25's exact pair: `own retire 0 freed 3 requests, view retire -11, 0 of
+    1 other sessions freed 0, control lane used 266321616 of 268435456
+    bytes, 107 of 4096 slots; retrying the charge once`, then `charge still
+    failed after the retry: error -28, control lane used …; the charge
+    fails`.
+  - Now it succeeds after a VIEW_RETIRE (`view retire 0`; the round
+    returned exactly one release ticket, 26,786,357 bytes).
+  - **Negative:** with only B's own tickets left, the next control
+    `PACKAGE_TICKET` is refused ENOSPC with no native bytes (`own retire
+    -11 freed 0 requests, view retire -11, …; nothing freed, the charge
+    fails`).
+- **Host, red first:**
+  - `TestRetirementIsPerTicket` (viewcontrol): beside an active lease of
+    the same credentials, the answered release and the released lease's
+    acquisition retire, and a range with the active lease's acquisition is
+    BLOCKED. With gn4's clause put back it fails `answered release beside
+    the same credentials' active lease: {…"status":"BLOCKED"}`. Without the
+    per-ticket clause it fails `retired the active lease's acquisition`.
+  - `TestFactsRetireIsPerTicket` replaces `TestFactsRetireIsPerCredentials`.
+    On gn4's rule it failed for the answered release and for the released
+    acquisition (`WOULD_BLOCK … want held false`). It also checks that the
+    active lease's acquisition is held, another domain passes, an open
+    reservation is held, nothing left passes, and an undecodable request is
+    refused.
+  - `TestZQ3HolderRetiresBesideItsNextObservation` (recall model,
+    assembled runtime): T1's next observation shares the first lease, and
+    the first holder's release retires its answered release (control floor
+    1) while its acquisition waits for the shared lease (floor 0). Once the
+    next holder released too, both families retire (floors 2 and 2). On
+    gn4's rule it failed with `T1's release floor 0 beside its held
+    observation, want 1`.
+- `TestControlledReceivedActualFundedDirty` (`dirty`) had pinned the old
+  rule. Session 1's control cut through its answered release 1, offered
+  beside its second lease, was BLOCKED (five signed floors and one BLOCKED
+  cut). It is now RETIRED (six floors, none BLOCKED).
+  `checkReceivedViewFloorBindings` now requires the two actual release
+  replies across session 1's control cuts, which end at through 2, instead
+  of in one final cut.
+- `TestDurableRenewReleaseRetirementCompactsOnlyClosedSources` showed why the
+  rule checks `Active` and not a still-owed release credit. A renewed
+  revision keeps its credit, and that test retires it after releasing only
+  the renewal. An inactive lease never refused before, either.
+- **Other checks on the hp4 series:**
+  - a fresh `prepare.py` tree applies it with fuzz zero, and both
+    `build.py --module-objects` passes are warning-free;
+  - `tests/controlled`, `controlled_provider`, `requests`, `dirty`,
+    `capture`, `view` and `view --pressure` (sanitized and plain) pass;
+  - controlled_received `package` passes (5 tests), and `--scenario both`
+    passes all 21 stages (31 tests);
+  - `go vet ./...` is clean, and `golangci-lint` reports only the two known
+    QF1001;
+  - `go test -race ./...`: every package passes except
+    `TestZQ3T1CredentialsReplay`, whose two advance subtests went over only
+    the measured 4m host budget under `-race` on a host at load 20 (5m26s
+    and 5m49s; the modelled time held at 22 s). gn4 recorded the same on
+    its base. Without `-race` it passes.
+
+Not covered:
+
+- The guest still releases observation leases asynchronously. A process's
+  acquisitions still wait for a chain of observations that share one lease
+  (the ordinary lane, and the host's Tickets bound of 16). A chain of 16
+  back-to-back sharing observations would meet the Tickets bound (BLOCKED,
+  re4's back-off). In r25 the longest chain was 6.
+- A charge still retries only once.
+- The 178 MB permanent control base is still not decoded byte by byte.
+- The harness has no second credential set in one fixture session. The
+  per-ticket rule's other-credentials behaviour is covered by Go tests.
+- The r26 candidate needs the daemon rebuilt (the fix). The guest patches
+  changed in comments only. The candidate pins the kernel source, so the
+  kernel is rebuilt too, with no change in behaviour. The exporter and the
+  fdescfs window are unchanged.
 
