@@ -3229,3 +3229,166 @@ Not covered:
 - The r24 candidate needs the guest kernel rebuilt. The daemon and the
   exporter are unchanged. guest.py ships with the tools.
 
+## Release tickets charged before the grant, view tickets retired under charge pressure (`gn4`)
+
+In zq3-r24 R24-1 ([run record](../../../docs/lab/results/20261127-zq3-r24/README.md#r24-1-r23-1-again-the-1024-group-childs-open-fails-enospc-while-the-control-lane-is-98-full-9n4s-retry-path-never-fires)),
+T1's 1024-group access child 3 failed its `open` of `group-tail` with
+ENOSPC again. m0 logged one km4 line: `own retire 0 freed 1 requests, 0 of
+1 other sessions freed 0, control lane used 526456646 of 536870912 bytes,
+368 of 512 slots; retrying the charge once`. The retry failed and logged
+nothing. At the failure OBSERVE the host's view controller held 8 leases
+and 22 tickets (zq3-r23: 0 and 0).
+
+**The cause, from the controller ledger in `credentials-owner-live.tar`
+(decoded with bbolt, read-only) and the code:**
+
+- **Requests cannot free control bytes.** In both controlled tuples every
+  `hfs_call` request is charged to the ordinary lane, cleanup calls
+  included (`hfs_call_control_bytes`). The control lane holds the permanent
+  control base, each mount's progress packages, and the control view
+  tickets: every lease's VIEW_RELEASE ticket (prepared with `control`) with
+  its view completion package. A numbered ticket keeps that whole charge
+  until a VIEW_RETIRE moves its family's floor past it
+  (`hfs_view_retire_free`). One release ticket's charge, measured in the
+  controlled_received harness, is 26,786,357 bytes (25.5 MiB). So the one
+  request the round freed returned ordinary bytes only, and the retry had
+  to fail. 6m4 and km4 already listed that `hfs_retire_shared` offers no
+  view tickets.
+- **What filled m0's control lane.** All 22 host tickets were m0's: 13
+  released but unretired VIEW_RELEASE tickets (child 1's family 1-5, child
+  2's 1-3, the T1 process's 16-19, child 3's 1) and 9 GRANTED VIEW_ACQUIRE
+  tickets (ordinary lane). No VIEW_RETIRE could succeed after the failure
+  (next item), so this is the state at the failure. The 13 release tickets
+  are about 348 MB, two thirds of the 512 MiB lane. The rest (about 178
+  MB) is the permanent base and the two mounts' preowned packages; it was
+  not decoded byte by byte.
+- **Which charge failed.** Child 3 (1024 groups) had VIEW_ACQUIRE 1 and 2,
+  both GRANTED the same lease `c5110c37…` at revision 1. A re-grant of a
+  released lineage gets a new revision and id (child 2's lineage went to
+  revision 2), so the second acquisition shared the lease that the first
+  still held. The lease is still Active with a release credit but no
+  release ticket: its second holder never sent a VIEW_RELEASE. That is
+  `hfs_lease_own`, which charged the lease's control release ticket after
+  the GRANTED. The charge failed ENOSPC, `hfs_lease_acquire_grant` freed
+  the lease locally, and nothing could release it on the host again.
+- **Why the host kept 22 tickets and 8 leases.** `factsLedger.checkRetire`
+  refused every VIEW_RETIRE of a session while any lease of it was active
+  (km4's domain-wide rule, answered BLOCKED). The stranded lease kept that
+  refusal for the rest of the session. The 7 inactive leases stay as long
+  as their release tickets are unretired.
+- **Why the released tickets had piled up before.** The guest offers
+  VIEW_RETIRE only from lease cleanup, recall cleanup and re4's BLOCKED
+  re-sends, and the same domain-wide rule refused it whenever another T1
+  process held an observation lease. The T1 process's release family had
+  reached floor 15 of 19.
+- **A guest-only fix would not have been enough.** At the failing charge
+  child 3 itself held lease `c5110c37…` (the first holder). Under the
+  domain-wide rule a VIEW_RETIRE from the charge path is BLOCKED, so the
+  12 released tickets of the other three credential sets (about 321 MB)
+  stayed charged.
+
+**The fix:**
+
+- **Host** (`internal/controlledruntime/facts.go`,
+  `internal/viewcontrol/retirement.go`; the daemon must be rebuilt):
+  - `checkRetire` refuses for an active lease only when it carries the
+    retiring family's own credentials (`viewcontrol.CredentialDigest`).
+    That is the rule the controller's own `retirementBlocked` applies:
+    those are the only tickets a holder may still use. An open dirty
+    reservation still refuses domain-wide.
+  - This is the `checkRetire` half of ue4. ue4's other half, retirement
+    during a recall, is not part of gn4: r24 ran no recall, and the
+    controller's recall clause is unchanged.
+- **Guest** (patch 0003 `hfs.h`, `hfs_session.c`; patch 0004
+  `hfs_lease.c`):
+  - `hfs_lease_acquire_ex` prepares the release ticket before it sends
+    the VIEW_ACQUIRE. `hfs_lease_own` takes it over (`want->release`). A
+    full control lane now refuses the acquisition ENOSPC before any host
+    lease exists. An unused release ticket is unnumbered and is put
+    locally.
+  - `hfs_retire_shared` runs `hfs_view_retire` on the caller's session
+    after its own `hfs_retire`. A round that advanced a family floor
+    counts as progress, so the charge gets its one retry. The wait is the
+    retirement mutex, as for `hfs_retire`, bounded by the holder's
+    exchange. The VIEW_RETIRE itself is funded by the preowned retirement
+    package, so it needs no new control charge.
+  - An `hfs_view_retire` round that advanced a floor also advances 9n4's
+    generation (`hfs_retire_generation_advance`, which `hfs_retire` now
+    calls too).
+  - Logging. The round line has the view retirement's errno, and a retry
+    that fails again has a line of its own:
+
+```text
+9p-hfs: session <uuid> retired under charge pressure: own retire <errno> freed <n> requests, view retire <errno>, <k> of <m> other sessions freed <n>, <lane> lane used <bytes> of <limit> bytes, <slots> of <slot limit> slots; <outcome>
+9p-hfs: session <uuid> charge still failed after the retry: error <errno>, <lane> lane used <bytes> of <limit> bytes, <slots> of <slot limit> slots; the charge fails
+```
+
+  `view retire 0` means some family's floor advanced; -11 means nothing
+  was retirable or every VIEW_RETIRE was BLOCKED. The series was
+  regenerated with `export.py --task gn4` (0003 and 0004).
+
+**Tests:**
+
+- **Host, red first:** `TestZQ3ChildRetireBesideHeldObservation`
+  (recall model, assembled runtime). Child 1's families now retire at once
+  beside another process's active lease, and the holder's own families
+  only after its release. On the km4 rule it failed with `m0 access child
+  1 cleanup VIEW_RETIRE answered BLOCKED, want RETIRED`.
+  `TestFactsRetireIsPerCredentials` replaces
+  `TestFactsRetireStaysDomainWide`. It covers an active lease of other
+  credentials (passes), of the same credentials (held), of the same
+  credentials in another domain (passes), an open reservation (held),
+  none left (passes) and an undecodable request (refused).
+- **Guest, red first:** controlled_received `package`, both feature
+  sets unless noted.
+  - `TestControlledReceivedActualControlLaneRetirement` (mapped). On the
+    9n4 series it failed with `C6 PACKAGE_TICKET session0 control = -28
+    want0` while a released release ticket was retirable (`own retire
+    -11 freed 0 requests, …; nothing freed, the charge fails`).
+  - `TicketPackageRetirement`'s new r24 round reproduces r24's line
+    (`own retire 0 freed 1 requests, …, control lane …; retrying the
+    charge once`). It failed with `missing log line "charge still failed
+    after the retry: error -28"`.
+  - **Mutation:** with the release ticket charged after the grant again
+    (gn4's order reverted, everything else kept),
+    `ControlLaneRetirement` fails with `refused acquisition sent native
+    bytes (a VIEW_ACQUIRE without a release ticket)`.
+- **Other harnesses on the gn4 series:**
+  - a fresh `prepare.py` tree applies it with fuzz zero, and `fs/9p/` and
+    `net/9p/` compile without warnings in both passes
+    (`build.py --module-objects`);
+  - `tests/controlled`, `controlled_provider`, `requests`, `dirty`,
+    `capture`, `mount_hello` and `view` pass;
+  - controlled_received `--scenario both` passes all 21 stages;
+  - `go vet ./...` is clean, and `golangci-lint` reports only the two
+    known QF1001.
+  - `go test -race ./...`: every package passes except
+    `TestZQ3T1CredentialsReplay`. Both of its advance subtests failed only
+    the measured budget (modelled time plus this host's work under
+    `-race`: 6m08s and 4m38s against 4m). The same test on the base
+    commit `ac8127f` under `-race` also fails that budget (advance, late
+    cleanup: 5m34s). Without `-race`, gn4 and base pass it three times
+    each with the same host work (about 1m10s). So the failure predates
+    gn4 and depends on host load.
+  - Shims: `requests` needed a compat body for
+    `hfs_retire_generation_advance`, and `tests/controlled` and `capture`
+    needed a no-op `hfs_retire_shared_failed`. The controlled_received
+    build selects the new functions.
+
+Not covered:
+
+- Other sessions' view tickets are not offered; the lane is global across
+  mounts. In r24, m1 held none.
+- An active lease of the same credentials still keeps that family's
+  tickets. An open dirty reservation still keeps every family of its
+  domain. When those hold the lane, the charge fails ENOSPC as before,
+  now with both lines logged and with no stranded host lease.
+- The charge still retries once. A round that frees less than the charge
+  needs fails it.
+- The guest harness has no second credential set inside one fixture
+  session, so the per-credential host rule is covered by the Go tests
+  only.
+- The 178 MB of permanent control charge was not decoded byte by byte.
+- The r25 candidate needs the guest kernel (0003/0004) and the daemon
+  (facts.go, retirement.go) rebuilt. The exporter is unchanged.
+

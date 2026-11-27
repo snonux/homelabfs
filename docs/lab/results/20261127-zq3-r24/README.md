@@ -130,6 +130,8 @@ Ruled out:
 - either retire more per round under charge pressure (all retirable runs, or every credential set) or keep retrying while rounds make progress;
 - check whether the held view tickets (22 of 24 on the host) are part of that charge.
 
+**Proven cause (task gn4, after the run):** the inference above was right about the lane, but not about the remedy. The control bytes were held by released but unretired VIEW_RELEASE tickets. Retiring more requests per round could not have helped, because requests use the ordinary lane. The failing charge was child 3's release ticket, charged after a grant. Its failure stranded a host lease, which then blocked every later VIEW_RETIRE of m0. Details and the fix are under [Follow-up](#follow-up).
+
 ## R24-2 (environment, minor): slow SSH round trips
 
 The three Phase 9 `ssh-noop` samples took 2.02, 0.45 and 2.29 s (median 2.016 s; earlier runs had about 0.2 s). The OBSERVE wall times were 1.39-2.11 s, so the net OBSERVE times came out negative or near 0 (net max 0.096 s), which makes the 984 sample uninformative this time. Rocky's first SSH try in Phase 12 had one banner timeout (try 2 answered at 06:55:46Z, 19 s after the start). Nothing failed because of it. Record only.
@@ -187,10 +189,13 @@ Every `retired under charge pressure` line, with its lane usage:
 
 ## Follow-up
 
-- **R24-1 (R23-1 again):** the 1024-group access child's `open` of `group-tail` fails `ENOSPC` with m0's control lane at 98.1% of its bytes. One km4 round freed 1 request, and the single retry did not fit. 9n4 fixed a race this run did not hit. To do:
-  - account for what fills the guest control lane in T1;
-  - make charge-pressure retirement free enough, or retry while it makes progress;
-  - relate it to the 8 leases and 22 tickets the host held at the failure OBSERVE.
+- **R24-1 (R23-1 again):** the 1024-group access child's `open` of `group-tail` fails `ENOSPC` with m0's control lane at 98.1% of its bytes. One km4 round freed 1 request, and the single retry did not fit. 9n4 fixed a race this run did not hit. Task gn4 proved the cause from the controller ledger in `credentials-owner-live.tar` and the code ([linux9p README, gn4](../../../../tools/integration/linux9p/README.md#release-tickets-charged-before-the-grant-view-tickets-retired-under-charge-pressure-gn4)):
+  - **The control lane was full of released but unretired VIEW_RELEASE tickets.** All 22 host tickets were m0's. 13 were RELEASED release tickets: child 1's 1-5, child 2's 1-3, the T1 process's 16-19 and child 3's 1. Each holds about 25.5 MiB of guest control bytes (with its view package) until a VIEW_RETIRE, about 348 MB together. The other 9 were GRANTED acquire tickets (ordinary lane).
+  - **The round freed 1 request, which returned none of those bytes.** In both controlled tuples every request is charged to the ordinary lane, and `hfs_retire_shared` offered no view tickets.
+  - **The failing charge was child 3's second lease's release ticket.** Its two VIEW_ACQUIREs were granted the same lease (`c5110c37…`, revision 1), which is still Active with no release ticket. `hfs_lease_own` charged that ticket after the GRANTED. The charge failed, the guest dropped the lease locally, and the host lease was stranded.
+  - **Why 22 tickets and 8 leases stayed on the host.** The runtime's physical check (`factsLedger.checkRetire`) refused every VIEW_RETIRE of m0 while any m0 lease was active, so the stranded lease blocked all later retirements. The same domain-wide rule had kept the earlier released tickets charged whenever another T1 process held an observation lease. It would also have refused a retirement from the failing charge itself, because child 3 still held its first lease.
+  - **Fix (gn4):** the guest charges the release ticket before the VIEW_ACQUIRE is sent. Its charge-pressure round also runs `hfs_view_retire`, and a failed retry is now logged. On the host, `checkRetire` refuses only for an active lease of the retiring family's own credentials (as the controller's `retirementBlocked` already did); an open reservation still refuses domain-wide.
+  - **An r25 candidate needs the guest kernel and the daemon rebuilt.** The exporter is unchanged.
 - **R24-2:** slow SSH round trips (about 2 s) during Phase 9; record only.
 - **Validated by this run:**
   - 9n4's lane-usage field (it named the control lane and its byte and slot usage);

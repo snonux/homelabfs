@@ -105,8 +105,11 @@ def main():
                 'hfs_call_prepare', 'hfs_call_number_locked', 'hfs_call_once', 'hfs_call', 'hfs_retirement_cut_new', 'hfs_retirement_cut_free', 'hfs_retire',
                 # km4: hfs_retire_shared's counted retire and its log line;
                 # 9n4: the retirement generation its callers read.
-                'hfs_retire_counted', 'hfs_retire_shared_note', 'hfs_retire_generation',
-                'hfs_retire_shared', 'hfs_result_adopt',
+                # gn4: its advance (also from hfs_view_retire), the lane
+                # text both lines share and the failed-retry line.
+                'hfs_retire_counted', 'hfs_lane_text', 'hfs_retire_shared_note',
+                'hfs_retire_shared_failed', 'hfs_retire_generation',
+                'hfs_retire_generation_advance', 'hfs_retire_shared', 'hfs_result_adopt',
                 'hfs_readdir_cleanup', 'hfs_readdir_forget', 'hfs_session_free', 'hfs_session_destroy', 'hfs_enrollment_validate', 'hfs_enrollment_lanes', 'v9fs_hfs_register_provider']
     definitions = []
     for name in selected:

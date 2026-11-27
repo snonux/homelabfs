@@ -2316,13 +2316,34 @@ var laneUsage = regexp.MustCompile(`, (ordinary|control) lane used (\d+) of (\d+
 // such line must name lane, show at most the limit used and (`short`)
 // less than packageShort free with slots to spare, so the bytes ran short,
 // or (!short) at least packageShort free after the retirement.
+//
+// gn4 (zq3-r24 R24-1): head now also carries the round's view retirement
+// (`view retire <errno>`), and the lane may still be short after a round
+// that freed only the other lane's bytes (r24's line: `short` with
+// `retrying the charge once`).
 func (p *packageRig) loggedUsage(t *testing.T, head, lane, outcome string, short bool) {
 	t.Helper()
-	want := regexp.MustCompile(regexp.QuoteMeta("retired under charge pressure: "+head) +
+	p.loggedLine(t, "retired under charge pressure: "+head, lane, outcome, short)
+}
+
+// loggedRetryFailure requires gn4's line for a retried charge that failed
+// again (zq3-r24 R24-1: r24's retry failed and logged nothing), with the
+// lane still short of bytes.
+func (p *packageRig) loggedRetryFailure(t *testing.T, lane string) {
+	t.Helper()
+	p.loggedLine(t, "charge still failed after the retry: error -28", lane, "the charge fails", true)
+}
+
+// loggedLine is loggedUsage's check for any line of the form
+// `<prefix>, <lane> lane used <n> of <n> bytes, <n> of <n> slots; <outcome>`.
+func (p *packageRig) loggedLine(t *testing.T, prefix, lane, outcome string, short bool) {
+	t.Helper()
+	head := prefix
+	want := regexp.MustCompile(regexp.QuoteMeta(prefix) +
 		`, ` + lane + ` lane used \d+ of \d+ bytes, \d+ of \d+ slots; ` + regexp.QuoteMeta(outcome))
 	for deadline := time.Now().Add(10 * time.Second); !want.MatchString(p.c.diagnostics.String()); {
 		if time.Now().After(deadline) {
-			t.Fatalf("missing retire-and-retry log line %q ... %s lane used ...; %q in:\n%s", head, lane, outcome, p.c.diagnostics.String())
+			t.Fatalf("missing log line %q ... %s lane used ...; %q in:\n%s", head, lane, outcome, p.c.diagnostics.String())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -2362,10 +2383,10 @@ func TestControlledReceivedActualPackageRetirement(t *testing.T) {
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, 0, 1)
 			// km4: the round is logged with what it freed.
 			// 9n4: the line names the charge's byte lane and its usage.
-			p.loggedUsage(t, "own retire -11 freed 0 requests, 1 of 1 other sessions freed 2", "ordinary", "retrying the charge once", false)
+			p.loggedUsage(t, "own retire -11 freed 0 requests, view retire -11, 1 of 1 other sessions freed 2", "ordinary", "retrying the charge once", false)
 			// Session 1's GETATTR result stays held; session 0 has none left.
 			p.expect(t, "PACKAGE_REQUEST", 1, p.root1, -28, 0)
-			p.loggedUsage(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0", "ordinary", "nothing freed, the charge fails", true)
+			p.loggedUsage(t, "own retire -11 freed 0 requests, view retire -11, 0 of 1 other sessions freed 0", "ordinary", "nothing freed, the charge fails", true)
 			// Session 0's own retirable GETATTR, same session.
 			p.c.action("REQUEST", 0, "GETATTR "+p.path, 0)
 			p.c.action("REPLIES_DROP", 0, "", 0)
@@ -2393,7 +2414,20 @@ func TestControlledReceivedActualTicketPackageRetirement(t *testing.T) {
 			// 9n4: a control ticket with the control bytes short and nothing
 			// retirable anywhere: the line names the control lane and its usage.
 			p.expect(t, "PACKAGE_TICKET", 0, "control", -28, 0)
-			p.loggedUsage(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0", "control", "nothing freed, the charge fails", true)
+			p.loggedUsage(t, "own retire -11 freed 0 requests, view retire -11, 0 of 1 other sessions freed 0", "control", "nothing freed, the charge fails", true)
+			// gn4 (zq3-r24 R24-1): r24's round. A control ticket short of
+			// control bytes while session 0 holds one retirable request: the
+			// round frees it (ordinary bytes only) and retries once, and the
+			// retry fails ENOSPC again. That second failure is now logged.
+			p.c.action("REQUEST", 0, "GETATTR "+p.path, 0)
+			p.c.action("REPLIES_DROP", 0, "", 0)
+			before := p.retires()
+			p.c.action("PACKAGE_TICKET", 0, "control", -28)
+			if p.retires() != before+1 {
+				t.Fatalf("r24 round: %d RETIRE exchanges, want 1", p.retires()-before)
+			}
+			p.loggedRetryFailure(t, "control")
+			p.loggedUsage(t, "own retire 0 freed 1 requests, view retire -11, 0 of 1 other sessions freed 0", "control", "retrying the charge once", true)
 			p.c.close()
 		})
 	}
@@ -2415,12 +2449,86 @@ func TestControlledReceivedActualBusyRetirementRetry(t *testing.T) {
 		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
 			p := newPackageRig(t, protocol)
 			p.expect(t, "PACKAGE_REQUEST_BUSY", 0, p.path, 0, 1)
-			p.loggedUsage(t, "own retire -11 freed 2 requests, 0 of 1 other sessions freed 0", "ordinary", "a concurrent round freed requests, retrying the charge once", false)
+			p.loggedUsage(t, "own retire -11 freed 2 requests, view retire -11, 0 of 1 other sessions freed 0", "ordinary", "a concurrent round freed requests, retrying the charge once", false)
 			p.expect(t, "PACKAGE_REQUEST_BUSY", 0, p.path, -28, 0)
-			p.loggedUsage(t, "own retire -11 freed 0 requests, 0 of 1 other sessions freed 0", "ordinary", "nothing freed, the charge fails", true)
+			p.loggedUsage(t, "own retire -11 freed 0 requests, view retire -11, 0 of 1 other sessions freed 0", "ordinary", "nothing freed, the charge fails", true)
 			p.c.close()
 		})
 	}
+}
+
+// gn4 (zq3-r24 R24-1): the 1024-group child's open failed ENOSPC with m0's
+// control lane 98% full. The control bytes were held by released but
+// unretired VIEW_RELEASE tickets (about 25.5 MiB each with their view
+// packages); requests, the only thing hfs_retire_shared retired, use the
+// ordinary lane. The failing charge was the release ticket that
+// hfs_lease_own prepared after the child's second VIEW_ACQUIRE was GRANTED:
+// the guest dropped the lease locally and the host kept it active with no
+// release ticket, which kept every later VIEW_RETIRE of m0 BLOCKED (22
+// tickets and 8 leases on the host afterwards).
+//
+// Each released() acquires session 0's lease and releases it through its
+// recall, leaving a GRANTED acquire ticket and a RELEASED release ticket,
+// both retirable and both still charged.
+//   - A control ticket with the control bytes short now succeeds after the
+//     round's view retirement (VIEW_RETIRE), with the request retirement
+//     itself finding nothing.
+//   - Negative: with nothing retirable an acquisition whose release ticket
+//     does not fit is refused ENOSPC before any VIEW_ACQUIRE is sent, so no
+//     host lease is left without a release.
+//   - r24's shape: with retirable released tickets, the acquisition retires
+//     them first (VIEW_RETIRE before its VIEW_ACQUIRE) and is granted.
+func TestControlledReceivedActualControlLaneRetirement(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	p := &packageRig{c: c}
+	c.call(0, "ROOT", map[string]any{})
+	var domain guestbridge.Capability
+	// The adopted ROOT request stays held, so the rounds below retire no
+	// request (own retire -11).
+	require(t, json.Unmarshal(c.action("ADOPT_ROOT", 0, "", 0), &domain))
+	released := func() {
+		c.action("ACQUIRE", 0, "", 0)
+		c.action("RELEASE_START", 0, "", 0)
+		for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+			c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
+			c.action("PHASE", 0, phase, 0)
+		}
+		c.action("RELEASE_DONE", 0, "", 0)
+	}
+	last := func(op string) (uint64, int) {
+		var cell uint64
+		n := 0
+		for k, command := range c.commands {
+			if command.Op == op {
+				n++
+				cell = max(cell, k)
+			}
+		}
+		return cell, n
+	}
+	released()
+	_, views := last("VIEW_RETIRE")
+	c.action("PACKAGE_TICKET", 0, "control", 0)
+	if _, n := last("VIEW_RETIRE"); n <= views {
+		t.Fatal("control ticket charge succeeded without a VIEW_RETIRE")
+	}
+	p.loggedUsage(t, "own retire -11 freed 0 requests, view retire 0, 0 of 1 other sessions freed 0", "control", "retrying the charge once", false)
+	commands := len(c.commands)
+	c.action("PACKAGE_ACQUIRE", 0, "", -28)
+	if len(c.commands) != commands {
+		t.Fatal("refused acquisition sent native bytes (a VIEW_ACQUIRE without a release ticket)")
+	}
+	p.loggedUsage(t, "own retire -11 freed 0 requests, view retire -11, 0 of 1 other sessions freed 0", "control", "nothing freed, the charge fails", true)
+	released()
+	_, views = last("VIEW_RETIRE")
+	c.action("PACKAGE_ACQUIRE", 0, "", 0)
+	retire, n := last("VIEW_RETIRE")
+	acquire, _ := last("VIEW_ACQUIRE")
+	if n <= views || retire > acquire {
+		t.Fatalf("acquisition was not granted after a VIEW_RETIRE (retire cell %d, acquire cell %d, %d retirements)", retire, acquire, n-views)
+	}
+	c.close()
 }
 
 // x84 review (zq3-r10 R10-1): at process exit PROCESS_EXIT normally reaches

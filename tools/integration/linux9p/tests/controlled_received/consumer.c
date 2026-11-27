@@ -692,6 +692,12 @@ static void package_pressure_lane(struct hfs_session *session,u64 leave,bool con
 static void package_pressure(struct hfs_session *session,u64 leave,void **pressure) {
  package_pressure_lane(session,leave,false,pressure);
 }
+/* What a view ticket's charge needs besides its view completion package,
+ * plus 1 MiB: its reservation, a family credit and both credit records.
+ * PACKAGE_TICKET and gn4's PACKAGE_ACQUIRE leave this much free. */
+static u64 package_ticket_leave(struct hfs_session *session) {
+ return (hfs_controlled_consumed(session)?1ULL:4ULL)*1024*1024+sizeof(struct hfs_view_family)+16384+2*sizeof(struct hfs_controlled_credit)+(1ULL<<20);
+}
 static void command(char *line) {
  char operation[32];unsigned id,index;int consumed=0;
  assert(sscanf(line,"%31s %u %u %n",operation,&id,&index,&consumed)>=3&&index<(getenv("HFS_C6_BACKEND_ONLY")?carrier->session_count:hfs_controlled_registry->nr_mounts));
@@ -1247,15 +1253,22 @@ static void command(char *line) {
  if(!strcmp(operation,"PACKAGE_TICKET")){
   struct hfs_session *session=f->session;void *pressure=NULL;struct hfs_view_ticket *ticket=NULL;
   bool control=!strcmp(line+consumed,"control");
-  u64 leave=(hfs_controlled_consumed(session)?1ULL:4ULL)*1024*1024+sizeof(struct hfs_view_family)+16384+2*sizeof(struct hfs_controlled_credit)+(1ULL<<20);
+  u64 leave=package_ticket_leave(session);
   assert(control||!line[consumed]);
   assert(hfs_completion_capacity(true,HFS_VIEW_BODY_MAX)>leave);
   package_pressure_lane(session,leave,control,&pressure);
   u64 cell=session->next_cell,ordinary=hfs_controlled_ordinary_used,controls=hfs_controlled_control_used;u32 tickets=session->nr_view_tickets,total=share_sessions(true);
   int err=hfs_view_ticket_prepare(session,&f->credential,control,&ticket);
-  u32 after=share_sessions(false);
-  if(err){assert(err==-ENOSPC&&!ticket);assert(session->next_cell==cell&&session->nr_view_tickets==tickets&&after==total&&hfs_controlled_ordinary_used==ordinary&&hfs_controlled_control_used==controls);}
-  else{assert(ticket&&ticket->completion&&after<total&&session->nr_view_tickets==tickets+1);hfs_view_ticket_put(ticket);assert(session->nr_view_tickets==tickets);}
+  u32 after=share_sessions(false),now=session->nr_view_tickets;
+  /* gn4: a round may retire requests (after<total) or, through the view
+   * retirement, this session's view tickets (now<tickets). A refusal after
+   * such a round (r24's shape: one request freed, the retry still short)
+   * only lowered the counters; without one it changed nothing. A success
+   * needs one of them and holds exactly one new ticket. */
+  bool retired=after<total||now<tickets;
+  if(err){assert(err==-ENOSPC&&!ticket);assert(now<=tickets&&after<=total&&hfs_controlled_ordinary_used<=ordinary&&hfs_controlled_control_used<=controls);
+   if(!retired)assert(session->next_cell==cell&&hfs_controlled_ordinary_used==ordinary&&hfs_controlled_control_used==controls);}
+  else{assert(ticket&&ticket->completion&&(after<total||now<=tickets));hfs_view_ticket_put(ticket);assert(session->nr_view_tickets==now-1);}
   hfs_controlled_unreserve(session,pressure);done(id,err,NULL,0);return;
  }
  if(!strcmp(operation,"CLEANUP_REQUEST")){
@@ -1359,10 +1372,18 @@ static void command(char *line) {
   if(!err)hfs_result_adopt(&(*f->session),f->ordinary_result);
   done(id,err,err?NULL:f->description->json->data,err?0:f->description->json->len);return;
  }
- if(!strcmp(operation,"ACQUIRE")||!strcmp(operation,"ACQUIRE_PAGE")){
-  struct floor_mark before=floor_mark(f->session);
+ /* gn4 (zq3-r24 R24-1): PACKAGE_ACQUIRE is ACQUIRE with the control bytes
+  * short: room for the lease's release ticket reservation and family
+  * credit, not for its view completion package (PACKAGE_TICKET control's
+  * pressure), with both fixture sessions listed. The pressure ends before
+  * the initial binding. */
+ bool package_acquire=!strcmp(operation,"PACKAGE_ACQUIRE");
+ if(package_acquire||!strcmp(operation,"ACQUIRE")||!strcmp(operation,"ACQUIRE_PAGE")){
+  struct floor_mark before=floor_mark(f->session);void *pressure=NULL;
+  if(package_acquire){package_pressure_lane(f->session,package_ticket_leave(f->session),true,&pressure);share_sessions(true);}
   struct hfs_lease *lease=NULL;int err=hfs_lease_acquire(&(*f->session),&f->credential,NULL,!strcmp(operation,"ACQUIRE_PAGE")?f->description:NULL,0,false,NULL,&lease);
-  if(!err)floor_owner_check(f->session,&before,0,1);
+  if(package_acquire){share_sessions(false);hfs_controlled_unreserve(f->session,pressure);}
+  if(!err&&!package_acquire)floor_owner_check(f->session,&before,0,1);
   if(!err){
    /* Consumption is checked BEFORE initial physical binding; no phase
     * exception is invented to keep an old grant fresh afterwards. */

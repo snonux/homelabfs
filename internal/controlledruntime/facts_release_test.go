@@ -138,23 +138,44 @@ func releaseCases() []releaseCase {
 	}
 }
 
-// TestFactsRetireStaysDomainWide: retirement still refuses while any lease or
-// open reservation of the domain remains, with viewcontrol.ErrRetirementHeld
-// (km4: the controller answers it BLOCKED instead of a never-answered
-// WouldBlock), and passes once neither remains.
-func TestFactsRetireStaysDomainWide(t *testing.T) {
-	l, _, _ := releaseLedger(t)
-	if err := l.checkRetire(guestbridge.Context{Session: "a"}); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
-		t.Fatalf("retire beside an active lease: %v", err)
+// TestFactsRetireIsPerCredentials: retirement refuses with
+// viewcontrol.ErrRetirementHeld (km4: the controller answers it BLOCKED
+// instead of a never-answered WouldBlock) while a lease of the retiring
+// family's own credentials is active, or any open reservation of the domain
+// remains, and passes once neither remains. gn4 (zq3-r24 R24-1): another
+// credential set's active lease no longer refuses it, nor does an active
+// lease of the same credentials in another domain.
+func TestFactsRetireIsPerCredentials(t *testing.T) {
+	scope := guestbridge.Context{Session: "a"}
+	child := guestbridge.Credentials{FSUID: 41001, FSGID: 42001, Groups: []uint32{42001}}
+	retire := func(c guestbridge.Credentials) json.RawMessage {
+		raw, err := json.Marshal(map[string]any{"credentials": c, "through": 1})
+		require(t, err)
+		return raw
+	}
+	l, _, newer := releaseLedger(t) // newer: active, another credential set
+	if err := l.checkRetire(scope, retire(child)); err != nil {
+		t.Fatalf("retire beside another credential set's active lease: %v", err)
+	}
+	newer.CredentialHash = viewcontrol.CredentialDigest(child)
+	setLease(&l, newer, true)
+	if err := l.checkRetire(scope, retire(child)); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
+		t.Fatalf("retire beside the family's own active lease: %v", err)
+	}
+	if err := l.checkRetire(guestbridge.Context{Session: "b"}, retire(child)); err != nil {
+		t.Fatalf("retire beside the same credentials' lease of another domain: %v", err)
 	}
 	l.Leases = nil
 	addReservation(&l, "older", "RESERVED")
-	if err := l.checkRetire(guestbridge.Context{Session: "a"}); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
+	if err := l.checkRetire(scope, retire(child)); !errors.Is(err, viewcontrol.ErrRetirementHeld) {
 		t.Fatalf("retire beside an open reservation: %v", err)
 	}
 	l.Reservations = nil
-	if err := l.checkRetire(guestbridge.Context{Session: "a"}); err != nil {
+	if err := l.checkRetire(scope, retire(child)); err != nil {
 		t.Fatalf("retire with no owner left: %v", err)
+	}
+	if err := l.checkRetire(scope, json.RawMessage(`{`)); err == nil {
+		t.Fatal("retire with an undecodable request passed")
 	}
 }
 

@@ -112,7 +112,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,586 @@
+@@ -0,0 +1,598 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -653,7 +653,19 @@ new file mode 100644
 + * it to hfs_retire_shared with its byte lane (control) after a failure.
 + */
 +unsigned int hfs_retire_generation(void);
++/* gn4: hfs_retire and hfs_view_retire rounds that returned bytes advance it. */
++void hfs_retire_generation_advance(void);
 +int hfs_retire_shared(struct hfs_session *session, bool control, unsigned int since);
++/* gn4: one hfs_retire_shared round for its log line: the caller's own
++ * hfs_retire (errno, requests freed), its view retirement (errno), and the
++ * other sessions offered, how many retired and how many requests.
++ */
++struct hfs_retire_tally {
++	int own_err, view_err;
++	u32 own, offered, others, others_freed;
++};
++/* gn4: logs a charge whose one retry after hfs_retire_shared failed again. */
++void hfs_retire_shared_failed(struct hfs_session *session, bool control, int err);
 +int hfs_session_destroy(struct hfs_session *session);
 +int hfs_cap_parse(struct hfs_session *session, const struct hfs_json *json,
 +		  int token, const char *kind, struct hfs_cap **out);
@@ -703,7 +715,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,4212 @@
+@@ -0,0 +1,4273 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -3251,6 +3263,9 @@ new file mode 100644
 + * 9n4 (zq3-r23 R23-1): the retirement generation is read before the first
 + * attempt, so hfs_retire_shared also counts a concurrent round that freed
 + * requests after this attempt failed (see there).
++ *
++ * gn4 (zq3-r24 R24-1): a retry that fails again is logged
++ * (hfs_retire_shared_failed); r24's retry failed ENOSPC with no line.
 + */
 +static int hfs_call_reserve(struct hfs_session *session, struct hfs_request *request,
 +			    bool resource_control)
@@ -3272,6 +3287,8 @@ new file mode 100644
 +				request->reservation = NULL;
 +			}
 +		}
++		if (retired && err)
++			hfs_retire_shared_failed(session, resource_control, err);
 +		if (retired || (err != -ENOSPC && err != -EAGAIN) ||
 +		    hfs_retire_shared(session, resource_control, since))
 +			return err;
@@ -4651,15 +4668,8 @@ new file mode 100644
 +		session->provider->unreserve(session, reservation);
 +	}
 +	mutex_unlock(&session->lock);
-+	/* 9n4: only after the frees. atomic_inc implies no ordering, and the
-+	 * unlocks above are release-only (a later access may pass them), so the
-+	 * full barrier orders every unreserve before the increment: a charge
-+	 * that sees the new generation (hfs_retire_shared) and then takes the
-+	 * provider's lock to retry finds these bytes returned. A reader that
-+	 * misses the increment only keeps its ENOSPC, as before 9n4.
-+	 */
-+	smp_mb__before_atomic();
-+	atomic_inc(&hfs_retired_rounds);
++	/* 9n4: only after the frees (hfs_retire_generation_advance). */
++	hfs_retire_generation_advance();
 +	wake_up_all(&session->allocation_wait);
 +	if (cut) {
 +		session->retirement_cut = NULL;
@@ -4701,8 +4711,6 @@ new file mode 100644
 + * caller's own retirement (its errno, -EAGAIN for nothing retirable, and the
 + * requests it freed), how many other sessions of the provider were offered
 + * and how many of them retired how many requests, and what happens next.
-+ * View tickets are not retired here (hfs_view_retire), so "freed" counts
-+ * requests only.
 + *
 + * 9n4 (zq3-r23 R23-1): the line also names the charge's byte lane
 + * (ordinary or control; r22 and r23 could not tell which lane ran short),
@@ -4712,25 +4720,56 @@ new file mode 100644
 + * decided (hfs_controlled_lane_usage): bytes used of the byte limit and
 + * reservation slots used of the slot limit, so the next run's log shows how
 + * short the lane was and whether bytes or slots ran out.
++ *
++ * gn4 (zq3-r24 R24-1): the line also has the round's own view retirement
++ * (`view retire <errno>`: 0 when a family's floor advanced, -EAGAIN when
++ * nothing was retirable or every VIEW_RETIRE was BLOCKED). "freed" still
++ * counts requests only. The counts are struct hfs_retire_tally (hfs.h).
 + */
-+static void hfs_retire_shared_note(struct hfs_session *session, int own_err, u32 own,
-+				   u32 offered, u32 others, u32 others_freed, bool control,
-+				   const char *outcome)
++
++/* gn4: `, <lane> lane used <bytes> of <limit> bytes, <slots> of <limit>
++ * slots` (9n4's usage snapshot), or `, <lane> lane` without a controlled
++ * mount, for both charge-pressure lines.
++ */
++static void hfs_lane_text(struct hfs_session *session, bool control, char *text, size_t len)
 +{
 +	const char *lane = control ? "control" : "ordinary";
 +	struct hfs_lane_usage usage;
 +
-+	if (hfs_controlled_lane_usage(session, control, &usage)) {
-+		pr_info_ratelimited("9p-hfs: session %pUb retired under charge pressure: own retire %d freed %u requests, %u of %u other sessions freed %u, %s lane; %s\n",
-+				    &session->enrollment.session, own_err, own, others, offered,
-+				    others_freed, lane, outcome);
-+		return;
-+	}
-+	pr_info_ratelimited("9p-hfs: session %pUb retired under charge pressure: own retire %d freed %u requests, %u of %u other sessions freed %u, %s lane used %llu of %llu bytes, %u of %u slots; %s\n",
-+			    &session->enrollment.session, own_err, own, others, offered,
-+			    others_freed, lane, (unsigned long long)usage.bytes,
-+			    (unsigned long long)usage.limit, usage.slots,
-+			    usage.slot_limit, outcome);
++	if (hfs_controlled_lane_usage(session, control, &usage))
++		snprintf(text, len, ", %s lane", lane);
++	else
++		snprintf(text, len, ", %s lane used %llu of %llu bytes, %u of %u slots", lane,
++			 (unsigned long long)usage.bytes, (unsigned long long)usage.limit,
++			 usage.slots, usage.slot_limit);
++}
++
++static void hfs_retire_shared_note(struct hfs_session *session,
++				   const struct hfs_retire_tally *tally, bool control,
++				   const char *outcome)
++{
++	char lane[128];
++
++	hfs_lane_text(session, control, lane, sizeof(lane));
++	pr_info_ratelimited("9p-hfs: session %pUb retired under charge pressure: own retire %d freed %u requests, view retire %d, %u of %u other sessions freed %u%s; %s\n",
++			    &session->enrollment.session, tally->own_err, tally->own,
++			    tally->view_err, tally->others, tally->offered, tally->others_freed,
++			    lane, outcome);
++}
++
++/* gn4 (zq3-r24 R24-1): a charge whose one retry after hfs_retire_shared
++ * failed again (hfs_call_reserve, hfs_view_ticket_charge). r24's only line
++ * said "retrying the charge once"; that the retry then failed ENOSPC was
++ * left to inference. This line records it with the lane's usage at that
++ * point.
++ */
++void hfs_retire_shared_failed(struct hfs_session *session, bool control, int err)
++{
++	char lane[128];
++
++	hfs_lane_text(session, control, lane, sizeof(lane));
++	pr_info_ratelimited("9p-hfs: session %pUb charge still failed after the retry: error %d%s; the charge fails\n",
++			    &session->enrollment.session, err, lane);
 +}
 +
 +/* 6m4 (zq3-r21 R21-1): retire this session's retirable requests and those
@@ -4771,15 +4810,49 @@ new file mode 100644
 +	return atomic_read(&hfs_retired_rounds);
 +}
 +
++/* 9n4: called only after a round's frees. atomic_inc implies no ordering,
++ * and the unlocks before it are release-only (a later access may pass
++ * them), so the full barrier orders every unreserve before the increment:
++ * a charge that sees the new generation (hfs_retire_shared) and then takes
++ * the provider's lock to retry finds these bytes returned. A reader that
++ * misses the increment only keeps its ENOSPC, as before 9n4. gn4: also
++ * after an hfs_view_retire round that advanced a floor.
++ */
++void hfs_retire_generation_advance(void)
++{
++	smp_mb__before_atomic();
++	atomic_inc(&hfs_retired_rounds);
++}
++
++/* gn4 (zq3-r24 R24-1): after its own requests, the caller's session also
++ * retires its retirable view tickets (hfs_view_retire). In r24 the
++ * 1024-group child's control charge (its lease's release ticket) failed
++ * with m0's control lane at 526456646 of 536870912 bytes: the lane was held
++ * by released but unretired VIEW_RELEASE tickets, about 25.5 MiB each with
++ * their view packages, which only a VIEW_RETIRE returns. Requests, all this
++ * round retired, are charged to the ordinary lane in both controlled
++ * tuples (hfs_call_control_bytes), so the one request it freed returned
++ * none of the missing control bytes and the retry failed. The view round
++ * waits for session->retirement as hfs_retire does (bounded by the holder's
++ * exchange). The host answers a family's VIEW_RETIRE BLOCKED while a lease
++ * of the same credentials is active or a dirty reservation of the session
++ * is open (factsLedger.checkRetire, per credentials since gn4; before, any
++ * active lease of the session refused every family). If those hold the
++ * lane, the charge fails as before. Other sessions' view tickets are not
++ * offered.
++ */
 +int hfs_retire_shared(struct hfs_session *session, bool control, unsigned int since)
 +{
 +	struct hfs_session **sessions, *other;
 +	unsigned long flags;
-+	u32 count = 0, max = atomic_read(&hfs_active_sessions), i, own, freed, others = 0;
-+	u32 others_freed = 0;
-+	int own_err = hfs_retire_counted(session, &own), err = own_err;
++	u32 count = 0, max = atomic_read(&hfs_active_sessions), i, freed;
++	struct hfs_retire_tally tally = {};
 +	const char *outcome = "retrying the charge once";
++	int err;
 +
++	tally.own_err = hfs_retire_counted(session, &tally.own);
++	tally.view_err = hfs_view_retire(session);
++	err = tally.view_err ? tally.own_err : 0;
 +	sessions = max ? kmalloc_array(max, sizeof(*sessions), GFP_KERNEL) : NULL;
 +	if (!sessions)
 +		goto note;
@@ -4797,8 +4870,8 @@ new file mode 100644
 +	for (i = 0; i < count; i++) {
 +		if (!hfs_retire_counted(sessions[i], &freed)) {
 +			err = 0;
-+			others++;
-+			others_freed += freed;
++			tally.others++;
++			tally.others_freed += freed;
 +		}
 +		if (atomic_dec_and_test(&sessions[i]->budget_users))
 +			wake_up_all(&hfs_budget_wait);
@@ -4811,8 +4884,8 @@ new file mode 100644
 +	} else if (err) {
 +		outcome = "nothing freed, the charge fails";
 +	}
-+	hfs_retire_shared_note(session, own_err, own, count, others, others_freed, control,
-+			       outcome);
++	tally.offered = count;
++	hfs_retire_shared_note(session, &tally, control, outcome);
 +	return err;
 +}
 +
