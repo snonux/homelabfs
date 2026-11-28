@@ -11,7 +11,9 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
+import time
 
 from elf import identity
 from package import canonical, digest, read_json
@@ -68,6 +70,84 @@ def toolchain():
         size, value = digest(path)
         result[str(path)] = {'bytes': size, 'sha256': value}
     return result
+
+
+def run_stage(argv, cwd, env, timeout=1190, grace=5, reap=30):
+    """Run one build command as its own process group, bounded by timeout.
+
+    subprocess.run(timeout=...) only SIGKILLs the direct child: a timed-out
+    `make -j2` left its compiler/link children writing the same O= tree, and
+    the first resume of that stage collided with them (xz3-r26, twice). The
+    command therefore starts in a new session (pgid == pid). On timeout the
+    whole group gets SIGTERM, up to `grace` seconds to exit, then SIGKILL.
+    On every path, including a normal or failed exit, any member still left
+    in the group is terminated the same way and run_stage returns only after
+    the group is gone, so a later stage or resume never overlaps it. The
+    group wait is bounded by `reap` seconds; a group that survives SIGKILL
+    (for example stuck in uninterruptible I/O) raises RuntimeError instead.
+    A timeout raises subprocess.TimeoutExpired, a nonzero exit
+    subprocess.CalledProcessError, as before.
+    """
+    process = subprocess.Popen(argv, cwd=cwd, env=env, start_new_session=True)
+    timed_out = False
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+    finally:
+        # Every path (timeout, normal exit, KeyboardInterrupt) empties the group.
+        stop_group(process, grace, reap)
+    if timed_out:
+        raise subprocess.TimeoutExpired(argv, timeout)
+    if process.returncode:
+        raise subprocess.CalledProcessError(process.returncode, argv)
+
+
+def group_alive(pgid):
+    """True while any process (zombies included) is in group pgid."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def signal_group(pgid, sig):
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        pass
+
+
+def wait_group(process, deadline):
+    """Reap the leader and poll the group until it is empty or deadline."""
+    while time.monotonic() < deadline:
+        try:
+            process.wait(timeout=max(0, min(0.05, deadline - time.monotonic())))
+        except subprocess.TimeoutExpired:
+            continue
+        if not group_alive(process.pid):
+            return True
+        time.sleep(0.05)
+    return process.poll() is not None and not group_alive(process.pid)
+
+
+def stop_group(process, grace, reap):
+    """SIGTERM the stage group, SIGKILL after grace, wait until it is gone.
+
+    The leader is reaped first (it is our child); orphaned members are
+    reaped by init, so the group empties shortly after they die. Idempotent:
+    an already empty group returns at once.
+    """
+    if process.poll() is not None and not group_alive(process.pid):
+        return
+    signal_group(process.pid, signal.SIGTERM)
+    if wait_group(process, time.monotonic() + grace):
+        return
+    signal_group(process.pid, signal.SIGKILL)
+    if not wait_group(process, time.monotonic() + reap):
+        raise RuntimeError(f'stage process group {process.pid} still alive after SIGKILL; '
+                           'refusing to continue while it may write the build tree')
 
 
 def config_values(path):
@@ -144,7 +224,9 @@ def main():
             'OBJDUMP=/usr/bin/objdump', 'READELF=/usr/bin/readelf']
 
     def run(argv):
-        subprocess.run(argv, cwd=source, env=env, check=True, timeout=1190)
+        # Bounded below the coordinator's 20-minute stage guard; run_stage
+        # kills and reaps the whole make process group before returning.
+        run_stage(argv, source, env)
 
     def verify_source():
         run(['/usr/bin/python3', str(HERE.parent / 'linux9p/prepare.py'),
