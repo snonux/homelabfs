@@ -1,0 +1,18 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+Transaction ID : 69
+Begin time     : Fri 27 Nov 2026 12:55:04 AM EET
+Packages Altered:
+    Upgrade  rsync-3.2.7-4.el9_9.x86_64     @baseos
+    Upgraded rsync-3.2.7-1.el9_8.x86_64     @@System
+    Upgrade  libgs-9.54.0-20.el9_9.1.x86_64 @appstream
+    Upgraded libgs-9.54.0-19.el9_8.3.x86_64 @@System
+== needs-restarting
+No core libraries or services have been updated since boot-up.
+Reboot should not be necessary.
+rc=0
+== systemd
+running
+IDX BOOT ID                          FIRST ENTRY                 LAST ENTRY
+  0 5f26abab958b470197ac8f1772023d15 Fri 2026-11-27 17:50:43 EET Sat 2026-11-28 10:47:41 EET
