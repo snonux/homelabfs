@@ -29,6 +29,11 @@ coordinator's reviewed resource guard: two CPUs, 2 GiB descendant RSS,
 20 minutes per stage, at least max(8 GiB,25% physical) MemAvailable and 8 GiB
 aggregate allocated disk across **all** old/new roots, archives, caches,
 temporaries and remote artifacts. Swap is telemetry only. Retain failed outputs.
+Each `make` runs in its own process group with a 1190 s limit; on timeout the
+whole group gets SIGTERM, then SIGKILL after 5 s, and the stage returns only
+once the group is gone (bounded; a group surviving SIGKILL fails the stage).
+Rerunning a timed-out stage therefore never overlaps leftover `make` children
+writing the same `O=` tree (xz3-r26 hit that twice).
 
 `kernel.config` is an unbooted x86_64 candidate resolved from allnoconfig. The
 owned provider, guest 9p and virtio-9p are built into the complete custom kernel;

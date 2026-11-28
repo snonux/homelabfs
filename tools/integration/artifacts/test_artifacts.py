@@ -7,9 +7,13 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import struct
+import subprocess
 import tempfile
+import time
 import unittest
+from unittest import mock
 
 import elf
 import kernel
@@ -109,6 +113,100 @@ class KernelConfigTests(unittest.TestCase):
                 self.write(entry)
                 with self.assertRaises(ValueError):
                     kernel.assert_config(self.path, self.key)
+
+
+class KernelStageTests(unittest.TestCase):
+    """run_stage on fake "make" scripts (yp4): a timed-out or finished stage
+    must leave no process of its group behind, so a resumed stage never
+    shares the O= build directory with an earlier stage's make children."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.pidfile = self.root / 'child.pid'
+
+    def fake_make(self, body):
+        # The background child records its pid, like a make job writing O=.
+        script = self.root / 'make.sh'
+        script.write_text('#!/bin/sh\n' + body.replace('PIDFILE', str(self.pidfile)))
+        script.chmod(0o700)
+        return [str(script)]
+
+    def child(self):
+        deadline = time.monotonic() + 5
+        while not self.pidfile.exists() or not self.pidfile.read_text().strip():
+            self.assertLess(time.monotonic(), deadline, 'fake make never started its child')
+            time.sleep(0.05)
+        return int(self.pidfile.read_text())
+
+    def assert_gone(self, pid):
+        # Reaped, not merely signalled: kill(pid, 0) must find nothing.
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+    def cleanup_child(self, pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    def test_timeout_terminates_whole_group(self):
+        argv = self.fake_make('sleep 60 & echo $! > PIDFILE\nwait\n')
+        with self.assertRaises(subprocess.TimeoutExpired):
+            kernel.run_stage(argv, self.root, dict(os.environ), timeout=1)
+        pid = self.child()
+        self.addCleanup(self.cleanup_child, pid)
+        self.assert_gone(pid)
+
+    def test_timeout_kills_group_ignoring_sigterm_after_grace(self):
+        argv = self.fake_make("trap '' TERM\nsleep 60 & echo $! > PIDFILE\nwait\n")
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            kernel.run_stage(argv, self.root, dict(os.environ), timeout=1, grace=0.5)
+        pid = self.child()
+        self.addCleanup(self.cleanup_child, pid)
+        self.assert_gone(pid)
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_stage_runs_in_own_process_group(self):
+        argv = self.fake_make('ps -o pgid= -p $$ > PIDFILE\n')
+        kernel.run_stage(argv, self.root, dict(os.environ), timeout=10)
+        self.assertNotEqual(int(self.pidfile.read_text()), os.getpgrp())
+
+    def test_leftover_after_leader_exit_is_terminated(self):
+        argv = self.fake_make('sleep 60 & echo $! > PIDFILE\nexit 0\n')
+        kernel.run_stage(argv, self.root, dict(os.environ), timeout=10)
+        pid = self.child()
+        self.addCleanup(self.cleanup_child, pid)
+        self.assert_gone(pid)
+
+    def test_failed_stage_raises(self):
+        argv = self.fake_make('exit 3\n')
+        with self.assertRaises(subprocess.CalledProcessError) as caught:
+            kernel.run_stage(argv, self.root, dict(os.environ), timeout=10)
+        self.assertEqual(caught.exception.returncode, 3)
+
+    def test_group_that_never_disappears_is_refused_in_bounded_time(self):
+        # Negative: a group surviving SIGKILL (e.g. uninterruptible I/O) must
+        # not let a resume proceed, and the wait for it must be bounded.
+        real = os.killpg
+
+        def stuck(pgid, sig):
+            if sig == 0:
+                return None
+            try:
+                real(pgid, sig)
+            except ProcessLookupError:
+                pass
+
+        argv = self.fake_make('exit 0\n')
+        started = time.monotonic()
+        with mock.patch.object(kernel.os, 'killpg', stuck):
+            with self.assertRaisesRegex(RuntimeError, 'process group'):
+                kernel.run_stage(argv, self.root, dict(os.environ), timeout=10,
+                                 grace=0.2, reap=0.5)
+        self.assertLess(time.monotonic() - started, 5)
 
 
 class PackageTests(unittest.TestCase):
