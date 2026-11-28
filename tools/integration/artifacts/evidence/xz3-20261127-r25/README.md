@@ -1,5 +1,22 @@
 # xz3 r25 rebuild (2026-11-27): gn4 release tickets before the grant, view retirement under charge pressure
 
+**Superseded on 2026-11-27** by the [r26 rebuild](../xz3-20261127-r26/README.md)
+(`80cd01bb…`, source `9994339`) for zq3-r26. zq3-r25 ran this candidate on
+2026-11-27, and T1 failed with
+[R25-1](../../../../../docs/lab/results/20261127-zq3-r25/README.md). Every
+T1 probe syscall passed, the 1024-group child included, but the retention
+inventory's `lstat` failed with ENOSPC: m0's control lane was 98% full of
+13 answered VIEW_RELEASE tickets of the T1 process. This candidate's daemon
+`43414d7f…` answered their VIEW_RETIRE BLOCKED, because the process always
+held another observation lease of the same credentials (the guest releases
+a lease asynchronously). hp4 refuses a retirement only for a range holding
+the GRANTED acquisition of a still active lease. So r26 rebuilt the daemon
+with the window artifacts, rebuilt the guest kernel for hp4's comment-only
+patch changes, and reused only this candidate's exporter `8cadae40…` byte
+for byte. The tooling now refuses this manifest as superseded, and
+`FD_ATTR` holds `80cd01bb…` instead. This manifest still passes
+`package.py check` and `admit.py` under the `9994339` tooling.
+
 This candidate supersedes the [r24 rebuild](../xz3-20261127-r24/README.md)
 (`c9500232…`, source `f6119d5`). zq3-r24 ran it on 2026-11-27.
 [R24-1](../../../../../docs/lab/results/20261127-zq3-r24/README.md) stopped

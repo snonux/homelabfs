@@ -171,6 +171,15 @@ again came out byte-identical. gn4 also changed the daemon, so it was
 rebuilt at `e9ae706` (`43414d7f…`, go1.27.4), which is the repository
 baseline, and only the exporter `8cadae40…` was reused (as in the r23
 rebuild).
+The r26 rebuild for zq3-r26 (candidate `80cd01bb…`,
+[evidence](evidence/xz3-20261127-r26/README.md)) kept that config too;
+hp4 changed only comments in patches 0003/0004, yet the image changed
+(build ID `899cc101…`): one `__bug_table` line number moved, so `vmlinux`
+and `bzImage` differ from the r25 build, while `System.map`,
+`Module.symvers`, the five modules and `abi-negative.json` came out
+byte-identical. hp4 also changed the daemon, so it was rebuilt at
+`9994339` (`024528a4…`, go1.27.4), which is the repository baseline, and
+only the exporter `8cadae40…` was reused (as in the r25 rebuild).
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

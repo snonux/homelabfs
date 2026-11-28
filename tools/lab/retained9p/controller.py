@@ -182,7 +182,13 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   after the GRANTED and offered no view tickets to retirement, and the km4
 #   daemon 43238fe9, whose domain-wide checkRetire refused every VIEW_RETIRE
 #   once a lease was stranded, so T1's 1024-group access child's open failed
-#   ENOSPC on a full control lane (zq3-r24 R24-1, fixed by gn4).
+#   ENOSPC on a full control lane (zq3-r24 R24-1, fixed by gn4);
+# - a3eac923 (the r25 rebuild, e9ae706, run in zq3-r25) has the gn4
+#   daemon 43414d7f, whose per-credential checkRetire refused every
+#   VIEW_RETIRE of a process's answered VIEW_RELEASE tickets while the same
+#   process held another observation lease (always, since the guest
+#   releases leases asynchronously), so 13 of them filled m0's control lane
+#   and T1's retention lstat failed ENOSPC (zq3-r25 R25-1, fixed by hp4).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -207,22 +213,24 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "f21450ec7597291f2353f48b1d184c6397324783ebbcf73aa73d0b60ebc2a106",
               "2c85b23049655d0a223a0510dc41d93fc3ec4cc35c213ac24ff05af6f8550f0e",
               "21c49a55de83774c30d89b4ea7b01ddeb318e1eafeb8fd2e53418c941f79faa3",
-              "c9500232792012a2131063fea7ad992c1115a5904a83aa0ba4c4815acce7670c"}
-# The only candidate this controller pins: the xz3 r25 rebuild for zq3-r25
-# (built 2026-11-27 from e9ae706, which is also the repository baseline).
-# gn4 (zq3-r24 R24-1) changed two parts, both rebuilt: the guest kernel
-# (patches 0003/0004: a lease's control release ticket is charged before
-# the VIEW_ACQUIRE, and a charge's retire round also retires the caller's
-# view tickets; c64 recipe,
-# g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4+tj4+dh4+kn1+5f4+s64+hh4+wj4+6m4+km4+9n4+gn4
-# series, build ID 8c70915f, binutils 2.47; config, Module.symvers and
-# modules byte-identical to c9500232) and the CGO daemon 43414d7f (go1.27.4;
-# checkRetire refuses for an active lease only with the retiring family's
-# credentials) with the window artifacts. The s64/hh4 exporter 8cadae40 is
-# reused byte for byte from c9500232, so it is in FD_ATTR too. The new
-# daemon bytes still need the f3 observer check.
+              "c9500232792012a2131063fea7ad992c1115a5904a83aa0ba4c4815acce7670c",
+              "a3eac923d2b8713a3252b1b95cfe0294a6326bbc298de9d67e81b7ed8ed5e5b9"}
+# The only candidate this controller pins: the xz3 r26 rebuild for zq3-r26
+# (built 2026-11-27 from 9994339, which is also the repository baseline).
+# hp4 (zq3-r25 R25-1) changed the CGO daemon, rebuilt as 024528a4 (go1.27.4;
+# checkRetire refuses only a range holding the GRANTED acquisition of a
+# still active lease) with the window artifacts, and only comments in the
+# guest patches 0003/0004, so the kernel was rebuilt for the new source pin
+# (c64 recipe,
+# g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4+tj4+dh4+kn1+5f4+s64+hh4+wj4+6m4+km4+9n4+gn4+hp4
+# series, build ID 899cc101, binutils 2.47; it differs from the r25 kernel
+# 8c70915f only in one __bug_table line number and the build ID note;
+# System.map, config, Module.symvers and modules byte-identical to
+# a3eac923). The s64/hh4 exporter 8cadae40 is reused byte for byte from
+# a3eac923, so it is in FD_ATTR too.
+# The new daemon bytes still need the f3 observer check.
 # Admission here is a dispatch precondition, never deployment eligibility.
-ADMITTED = {"a3eac923d2b8713a3252b1b95cfe0294a6326bbc298de9d67e81b7ed8ed5e5b9"}
+ADMITTED = {"80cd01bbfafdbf98361d0103d898c277af48350d9fe291d04da8a8f1f3789e30"}
 # Admitted candidates that may mount with `hfs_fdattr` (s64, bl4): GETATTR and
 # SETATTR through the open file description, so fstat/fchmod/fchown/futimens
 # work after a rename or unlink. All three parts must carry s64: the guest
@@ -233,16 +241,16 @@ ADMITTED = {"a3eac923d2b8713a3252b1b95cfe0294a6326bbc298de9d67e81b7ed8ed5e5b9"}
 # (docs/design/s64-fd-attr.md, "Version negotiation"). A pre-s64 guest kernel
 # would not even print the option. So the option is never derived from the
 # tooling's own version: a plan asks for it (`fd_attr`, below) and only a
-# digest listed here may grant it. The r25 rebuild carries s64 in all three
+# digest listed here may grant it. The r26 rebuild carries s64 in all three
 # parts (guest and lib9p 7f204dc, host 157a132; its exporter is that of the
-# second r21 rebuild, its daemon adds gn4 on top of km4). The second r21
-# rebuild f21450ec, the r22 rebuild 2c85b230, the r23 rebuild 21c49a55 and
-# the r24 rebuild c9500232 also carried s64 but are superseded (R21-1,
-# R22-1, R23-1, R24-1), so require_candidate refuses them before this set is
-# consulted; each left FD_ATTR with ADMITTED. Every older superseded
-# candidate, the first r21 rebuild 1428d4db included, predates s64 and must
-# never be added.
-FD_ATTR = frozenset({"a3eac923d2b8713a3252b1b95cfe0294a6326bbc298de9d67e81b7ed8ed5e5b9"})
+# second r21 rebuild, its daemon adds hp4 on top of gn4 and km4). The second
+# r21 rebuild f21450ec, the r22 rebuild 2c85b230, the r23 rebuild 21c49a55,
+# the r24 rebuild c9500232 and the r25 rebuild a3eac923 also carried s64 but
+# are superseded (R21-1, R22-1, R23-1, R24-1, R25-1), so require_candidate
+# refuses them before this set is consulted; each left FD_ATTR with
+# ADMITTED. Every older superseded candidate, the first r21 rebuild 1428d4db
+# included, predates s64 and must never be added.
+FD_ATTR = frozenset({"80cd01bbfafdbf98361d0103d898c277af48350d9fe291d04da8a8f1f3789e30"})
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -454,10 +462,11 @@ def require_candidate(manifest_hash):
         # ABANDON, dh4 drain exemption, vj4 own-lease recall and wj4 mmapped
         # mark end, the r22 6m4 cross-session retire before ENOSPC, the r23
         # km4 BLOCKED answer to a held VIEW_RETIRE, the r24 9n4 retry after
-        # a concurrent retire round, or the r25 gn4 release ticket before the
+        # a concurrent retire round, the r25 gn4 release ticket before the
         # grant, view retirement under charge pressure and per-credential
-        # VIEW_RETIRE check); the comment at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the r25 rebuild (a3eac923; d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry, first r21 rebuild 1428d4db without s64/hh4 ABANDON/dh4/vj4/wj4, second r21 rebuild f21450ec without the 6m4 cross-session retire before ENOSPC, r22 rebuild 2c85b230 without the km4 BLOCKED answer to a held VIEW_RETIRE, r23 rebuild 21c49a55 without the 9n4 retry after a concurrent retire round, r24 rebuild c9500232 without the gn4 release ticket before the grant/view retirement under charge pressure/per-credential VIEW_RETIRE check)")
+        # VIEW_RETIRE check, or the r26 hp4 per-ticket VIEW_RETIRE rule); the
+        # comment at SUPERSEDED says which.
+        raise Refused("superseded xz3 candidate: use the r26 rebuild (80cd01bb; d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry, first r21 rebuild 1428d4db without s64/hh4 ABANDON/dh4/vj4/wj4, second r21 rebuild f21450ec without the 6m4 cross-session retire before ENOSPC, r22 rebuild 2c85b230 without the km4 BLOCKED answer to a held VIEW_RETIRE, r23 rebuild 21c49a55 without the 9n4 retry after a concurrent retire round, r24 rebuild c9500232 without the gn4 release ticket before the grant/view retirement under charge pressure/per-credential VIEW_RETIRE check, r25 rebuild a3eac923 without the hp4 per-ticket VIEW_RETIRE rule)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

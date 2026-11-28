@@ -353,9 +353,24 @@ tickets. The daemon now refuses a clean-up only when the active lease
 belongs to the same set of credentials. Both parts changed, so on
 2026-11-27 the package was rebuilt for zq3-r25 with a new kernel and a new
 daemon (`a3eac923…`, kernel build ID `8c70915f…`, daemon `43414d7f…`).
-bhyve (`8cadae40…`) is the same file as before. The new daemon must pass
-the f3 self-check again. It is the package now allowed to mount with
-`hfs_fdattr`.
+bhyve (`8cadae40…`) is the same file as before.
+
+zq3-r25 ran that package on 2026-11-27. The new daemon passed the f3
+self-check, and T1 got further than ever: every file operation of the test
+worked, the 1024-group child included. Then the probe's final listing of
+what it had created failed with ENOSPC, again on a full control budget.
+This time the budget was held by 13 release tickets of leases the test had
+already given back. The daemon refused to clean them up because the same
+process always still held one other lease (the guest gives a lease back a
+moment later, in the background). hp4 changed the daemon to look at each
+ticket instead: it now refuses a clean-up only for a ticket whose lease is
+still active. The guest patches changed only in their comments. So on
+2026-11-27 the package was rebuilt for zq3-r26 with a new daemon
+(`80cd01bb…`, daemon `024528a4…`) and a kernel rebuilt from the updated
+patches (kernel build ID `899cc101…`: only one stored line number differs
+from the r25 kernel, so its hashes changed too). bhyve (`8cadae40…`) is
+the same file as before. The new daemon must pass the f3 self-check again. It is the
+package now allowed to mount with `hfs_fdattr`.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
